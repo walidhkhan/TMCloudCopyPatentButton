@@ -1,0 +1,2431 @@
+// Controller code
+        [HttpPost]
+        [ValidateAntiForgeryToken]
+        public ActionResult CopyPatentRecord(DetailsViewModel viewModel)
+        {
+            PatentCopySetting patentCopySetting = new PatentCopySetting();
+            Guid userID = UserContext.GetActiveUserData().UserID;
+            Guid newPatentID = Guid.Empty;
+            string userName = UserContext.GetActiveUserData().FirstName + " " + UserContext.GetActiveUserData().LastName;
+
+            patentCopySetting.ID = SequentialGuid.NewGuid();
+            patentCopySetting.UserID = userID;
+            patentCopySetting.IsDefault = viewModel.IsDefault;
+            patentCopySetting.IsAttorneyDocketNumber = viewModel.IsAttorneyDocketNumber;
+            patentCopySetting.IsTypeOfPatent = viewModel.IsTypeOfPatent;
+            patentCopySetting.IsCaseTypes = viewModel.IsCaseTypes;
+            patentCopySetting.IsStatus = viewModel.IsStatus;
+            patentCopySetting.IsSubstatus = viewModel.IsSubstatus;
+            patentCopySetting.IsFirstNamedInventor = viewModel.IsFirstNamedInventor;
+            patentCopySetting.IsApplicant = viewModel.IsApplicant;
+            patentCopySetting.IsOwner = viewModel.IsOwner;
+            patentCopySetting.IsGroups = viewModel.IsGroups;
+            patentCopySetting.IsFamilyID = viewModel.IsFamilyID;
+            patentCopySetting.IsLanguage = viewModel.IsLanguage;
+            patentCopySetting.IsAbstract = viewModel.IsAbstract;
+            patentCopySetting.IsParties = viewModel.IsParties;
+            patentCopySetting.IsImages = viewModel.IsImages;
+            patentCopySetting.IsCaseManagers = viewModel.IsCaseManagers;
+            patentCopySetting.IsClients = viewModel.IsClients;
+            patentCopySetting.IsAgents = viewModel.IsAgents;
+
+            viewModel.IsPatentCopySuccessful = false;
+
+            // Only create/overwrite settings if IsDefault is true
+
+            if (patentCopySetting.IsDefault)
+            {
+                if (_patentService.SavePatentCopySetting(patentCopySetting))
+                {
+                    if (_patentService.CopyPatentRecord(viewModel.PatentID, patentCopySetting, userID, userName, ref newPatentID))
+                    {
+                        return RedirectToAction("CopySuccessful", "Patents", new { ID = newPatentID, OriginalPatent = viewModel.PatentID });
+                    }
+                }
+            }
+            else
+            {
+                if (_patentService.CopyPatentRecord(viewModel.PatentID, patentCopySetting, userID, userName, ref newPatentID))
+                {
+                    return RedirectToAction("CopySuccessful", "Patents", new { ID = newPatentID, OriginalPatent = viewModel.PatentID });
+                }
+            }
+
+
+            //return Json(new { isValid = false }, JsonRequestBehavior.AllowGet);
+            return View("Details", viewModel);
+        }
+
+        public ActionResult CopySuccessful([Bind(Prefix = "ID")] Guid ID, [Bind(Prefix = "OriginalPatent")] string originalPatent)
+        {
+            DetailsViewModel viewModel = new DetailsViewModel();
+            viewModel.PatentID = ID;
+            ViewBag.PatentID = ID;
+            ViewBag.ReadOnly = false;
+            ViewBag.UpdateRenewalDatePopupDisplay = false;
+
+            viewModel.IsPatentCopySuccessful = true;
+            //viewModel.CopiedFromPatent = originalPatent;
+            LoadPatentRecord(viewModel);
+
+            FixedData(viewModel);
+            ViewBag.NewRecord = false;
+
+            //AddBreadcrumbSupport(viewModel, ID);
+
+            viewModel.EditLink = GetEditLink(ID);
+            viewModel.ActionPrefix = _actionPrefix;
+            return View("Details", viewModel);
+        }
+
+        public void LoadSectionOrder()
+        {
+            //Guid moduleTypeID = _commonService.GetModuleTypeIDByModuleTypeName(Globals.MODULE_TYPE_TRADEMARKS).ID;
+            Guid moduleTypeID = _commonService.ModuleTypeNameToID(Globals.MODULE_TYPE_PATENTS);
+
+            SectionOrder sectionOrder = _commonService.LoadSectionOrderByModuleTypeID(moduleTypeID, UserContext.GetActiveUserData().UserID);
+
+            if (sectionOrder != null)
+            {
+                ViewBag.SectionOrder = sectionOrder.Names;
+                ViewBag.SectionCollapsed = sectionOrder.Collapsed;
+            }
+            else
+            {
+                ViewBag.SectionOrder = string.Empty;
+                ViewBag.SectionCollapsed = string.Empty;
+            }
+        }
+
+        DetailsViewModel LoadPatentCopySettings(DetailsViewModel viewModel)
+        {
+            PatentCopySetting patentCopySetting = _patentService.GetPatentCopySettingsByUserID(UserContext.GetActiveUserData().UserID);
+
+            if (patentCopySetting != null)
+            {
+                if (patentCopySetting.IsDefault)
+                {
+                    viewModel.IsDefault = patentCopySetting.IsDefault;
+                    viewModel.IsAttorneyDocketNumber = patentCopySetting.IsAttorneyDocketNumber;
+                    viewModel.IsTypeOfPatent = patentCopySetting.IsTypeOfPatent;
+                    viewModel.IsCaseTypes = patentCopySetting.IsCaseTypes;
+                    viewModel.IsStatus = patentCopySetting.IsStatus;
+                    viewModel.IsSubstatus = patentCopySetting.IsSubstatus;
+                    viewModel.IsFirstNamedInventor = patentCopySetting.IsFirstNamedInventor;
+                    viewModel.IsApplicant = patentCopySetting.IsApplicant;
+                    viewModel.IsOwner = patentCopySetting.IsOwner;
+                    viewModel.IsGroups = patentCopySetting.IsGroups;
+                    viewModel.IsFamilyID = patentCopySetting.IsFamilyID;
+                    //viewModel.IsJurisdiction = trademarkCopySetting.IsJurisdiction;
+                    viewModel.IsLanguage = patentCopySetting.IsLanguage;
+                    viewModel.IsAbstract = patentCopySetting.IsAbstract;
+                    viewModel.IsParties = patentCopySetting.IsParties;
+                    viewModel.IsImages = patentCopySetting.IsImages;
+                    viewModel.IsCaseManagers = patentCopySetting.IsCaseManagers;
+                    viewModel.IsClients = patentCopySetting.IsClients;
+                    viewModel.IsAgents = patentCopySetting.IsAgents;
+
+                    return viewModel;
+                }
+            }
+
+            // If no [TrademarkCopySetting] found, default to false
+            viewModel.IsDefault = false;
+            viewModel.IsAttorneyDocketNumber = false;
+            viewModel.IsTypeOfPatent = false;
+            viewModel.IsCaseTypes = false;
+            viewModel.IsStatus = false;
+            viewModel.IsSubstatus = false;
+            viewModel.IsFirstNamedInventor = false;
+            viewModel.IsApplicant = false;
+            viewModel.IsOwner = false;
+            viewModel.IsGroups = false;
+            viewModel.IsFamilyID = false;
+            //viewModel.IsJurisdiction = false;
+            viewModel.IsLanguage = false;
+            viewModel.IsAbstract = false;
+            viewModel.IsParties = false;
+            viewModel.IsImages = false;
+            viewModel.IsCaseManagers = false;
+            viewModel.IsClients = false;
+            viewModel.IsAgents = false;
+
+            return viewModel;
+        }
+
+//View page code
+
+<%@ Page Language="C#" MasterPageFile="~/Views/Shared/SiteFluid.Master" Inherits="ViewPage<TMCloud.ViewModels.Patents.DetailsViewModel>" %>
+
+<asp:Content ID="TitleContent" ContentPlaceHolderID="TitleContent" runat="server">
+    <%:Resources.Modules.Patents.Details.HeaderLabel %>
+</asp:Content>
+
+<asp:Content ID="MainContent" ContentPlaceHolderID="MainContent" runat="server">
+
+    <style>
+        /*#body {
+            margin-top: 172px !important;
+        }*/
+        .k-editor {
+            width: 234px;
+            background-color: transparent;
+            padding: 0 0 0 0;
+            height: 25px;
+            margin: 0;
+            border-width: 1px;
+            background: none;
+        }
+        .k-editor-inline {
+            margin: 0;
+            padding: 21px 21px 11px;
+            border-width: 0;
+            box-shadow: none;
+            background: none;
+        }
+        .k-editor-inline.k-state-active {
+            border-width: 1px;
+            padding: 20px 20px 10px;
+            background: none;
+        }
+
+        /* Removes extra padding on icon buttons */
+        .k-edit, .k-delete, .k-update, .k-cancel {
+            margin-right: 1px !important;
+            margin-left: 4px !important;
+        }
+        /* Reduces button width for icon only buttons*/
+        .k-grid tbody .k-button {
+            min-width: 0;
+        }
+        .container_29
+        {
+            min-width:1100px;
+        }
+    </style>
+    <script type="text/javascript">
+    	var helpWindow;
+
+    	/* Prevents lists in editable dropdowns/popups from caching */
+        $.ajaxSetup({ cache: false });
+        //FIX for Family ID popup hit list not populating in Chrome and Firefox
+        var Position;
+        Position;
+
+        $(document).ready(function () {
+            document.getElementById("ButtonsBarDiv").style.display = 'inline';
+            $("#ButtonsPlaceholderDiv").html($("#ButtonsDiv").html());
+
+            kendo.culture("<%: Session["KendoCulture"] %>");
+            _expandableSections = new TMCloudSections('Patents');
+            $('#ExpandCollapseAllButton').click(function () {
+                _expandableSections.ToggleExpandAll();
+            });
+			
+            helpWindow = new HelpWindow({
+            	title: '<%: Resources.Common.Common.Help%>'
+            });
+
+        	<% if (ViewBag.ReadOnly == true) {%>
+			<% if (Model.CanEditHeader) { %>
+            document.getElementById("SaveButton").style.display = 'none';
+            document.getElementById("EditButton").style.display = 'inline';
+            document.getElementById("SaveBottomButton").style.display = 'none';
+            document.getElementById("EditBottomButton").style.display = 'inline';
+			<% } %>
+            <% } else { %>
+            document.getElementById("SaveButton").style.display = 'inline';
+            document.getElementById("EditButton").style.display = 'none';
+            document.getElementById("SaveBottomButton").style.display = 'inline';
+            document.getElementById("EditBottomButton").style.display = 'none';
+            <% } %>
+
+            <% if (ViewBag.NewRecord){ %>
+                $("#NewRecordCreatedDiv").show();
+                $("#BackToSearchResults").hide();
+            <%}else{%>
+                $("#NewRecordCreatedDiv").hide();
+                $("#BackToSearchResults").show();
+            <% } %>
+
+            <% if (Model.Archived){ %>
+            $("#RecordArchivedDiv").show();
+            <%}else{%>
+            $("#RecordArchivedDiv").hide();
+            <% } %>
+
+
+            $(window).scroll(function () {
+                var y = $(window).scrollTop();
+                <% if (Model.Archived){ %>
+                if (y > 200) {
+                    $("#ArchivedFloatDiv").fadeIn("slow");
+                } else {
+                    $('#ArchivedFloatDiv').fadeOut('slow');
+                }
+                <% } %>
+            });
+
+            // Load users saved section preferences (Collapsed/Order)
+            _expandableSections.ImplementSavedSectionPreferences('<%: Model.SectionOrder %>', '<%: Model.SectionCollapsed %>');
+        });
+        function onDeleteRecord() {
+            if (confirm("<%:Resources.Modules.Disputes.Details.DeleteConfirm %>")) {
+                var PatentID = $('#PatentID').val();
+                var actionUrl = tmCloudUrlHelper.GetUrl('DeleteRecord', 'Patents', PatentID);
+                GoToUrl(actionUrl);
+            }
+        }
+        function onArchiveRecord() {
+            if (confirm("<%:Resources.Modules.TrademarkClearances.Details.ArchiveConfirm %>")) {
+                var PatentID = $('#PatentID').val();
+                var actionUrl = tmCloudUrlHelper.GetUrl('ArchiveRecord', 'Patents', PatentID);
+                GoToUrl(actionUrl);
+            }
+        }
+        function onReactivateRecord() {
+            if (confirm("<%:Resources.Modules.TrademarkClearances.Details.ReactivateConfirm %>")) {
+                var PatentID = $('#PatentID').val();
+                var actionUrl = tmCloudUrlHelper.GetUrl('ReactivateRecord', 'Patents', PatentID);
+                GoToUrl(actionUrl);
+            }
+        }
+
+        function onJurisdictionChange(e) {
+            var JurisdictionID = GetSelectedAutoCompleteID('JurisdictionName');
+            if (JurisdictionID == false) {
+                return;
+            }
+            $('#JurisdictionID').val(JurisdictionID);
+            //get the region id and name
+            var personRequestUrl = '<%: Url.Action("CountryLawDetails", "Trademarks") %>' + '?countryLawID=' + JurisdictionID;
+            $.ajax({
+                url: personRequestUrl,
+                type: 'GET',
+                success: function (result) {
+                    // make sure data was found
+                    if (result.countryLawID == JurisdictionID) {
+                        //display the region name
+                        $('#spanRegion').text(result.regionName);
+                        $('#RegionID').val(result.regionID);
+                        $('#WipoCode').val(result.wipoCode);
+                    }
+                }
+            });
+        }
+        function onWipoChange(e) {
+            var JurisdictionID = GetSelectedAutoCompleteID('WipoCode');
+            if (JurisdictionID == false) {
+                return;
+            }
+            $('#JurisdictionID').val(JurisdictionID);
+            //get the region id and name
+            var personRequestUrl = '<%: Url.Action("CountryLawDetails", "Trademarks") %>' + '?countryLawID=' + JurisdictionID;
+            $.ajax({
+                url: personRequestUrl,
+                type: 'GET',
+                success: function (result) {
+                    // make sure data was found
+                    if (result.countryLawID == JurisdictionID) {
+                        //display the region name
+                        $('#spanRegion').text(result.regionName);
+                        $('#RegionID').val(result.regionID);
+                        $('#JurisdictionName').val(result.name);
+                    }
+                }
+            });
+        }
+
+        function SubmitForm() {
+            $('#PatentForm').submit();
+        }
+
+        $(document).ready(function () {
+            $('#SaveBottomButton').click(function () {
+                var $form = $('#PatentForm');
+                $form.submit();
+            });
+        });
+        function OpenApplicationNumberURL() {
+			<% if (Model.IsDesign) {  %>
+        		url = tmCloudUrlHelper.GetUrl('GetDesignViewInfo', 'Settings');
+        		url += '?wipoCode=';
+        		<% if (Model.WipoCode != null) {  %>
+        			url += '<%: Model.WipoCode %>';
+        		<% } %>
+        		url += '&applicationNumber=';
+        		<% if (Model.PatentDesignApplicationNumberTextBox != null) {  %>
+        			url += '<%: Model.PatentDesignApplicationNumberTextBox %>';
+        		<% } %>
+        		url += '&registrationNumber=';
+        		<% if (Model.PatentDesignRegistrationNumberTextBox != null) {  %>
+        			url += '<%: Model.PatentDesignRegistrationNumberTextBox %>';
+        		<% } %>
+			<% } else { %>
+				url = tmCloudUrlHelper.GetUrl('GetPatentInfo', 'Settings');
+				<% if (Model.PatentDesignApplicationNumberTextBox != null && Model.WipoCode != null) {  %>
+					url += '?applicationNumber=<%: Model.PatentDesignApplicationNumberTextBox %>&wipoCode=<%: Model.WipoCode %>';
+        		<% } %>
+			<% } %>
+            window.open(url, '_blank');
+        }
+        function OpenApplicationPCTNumberURL() {
+            url = tmCloudUrlHelper.GetUrl('GetPatentInfo', 'Settings');
+            <% if (Model.ApplicationPctNumberTextBox != null && Model.WipoCode != null) {  %>
+            url += '?applicationNumber=<%: Model.ApplicationPctNumberTextBox %>&wipoCode=<%: Model.WipoCode %>';
+            <% } %>
+            window.open(url, '_blank');
+        }
+
+        function ShowPatentLinksPopup() {
+            ShowPopup('#PatentLinksPopupDiv');
+        }
+        function onPatentDesignTypeChange(){
+            $('#PatentDesignTypeID').val($('#PatentDesignTypeName').data('kendoDropDownList').dataItem().Value);
+        }
+        function PatentQuickSearchSubmit(FamilyIDValue) {
+            ShowLoading();
+            //get the search criteria
+            var strSearchCriteria = "?FamilyID=" + FamilyIDValue;
+            //populate the Patents grid
+            var PatentsReadUrl = '<%: Url.Action("Patents_Read", "Patents")%>' + strSearchCriteria;
+            var PatentPopupDS = new kendo.data.DataSource({
+                transport: {
+                    read: {
+                        url: PatentsReadUrl,
+                        dataType: "json"
+                    }
+                }
+            });
+            var grid = $('#PatentsPopupGrid').data('kendoGrid');
+            grid.dataSource.read();
+            grid.setDataSource(PatentPopupDS);
+            HideLoading();
+            //display the search results popup window
+            ShowPopup('#PatentSearchResultsPopupDiv');
+        }
+
+        function DownloadDescriptionClaims() {
+            var $form = $('#addDocumentsForm');
+            ShowLoading();
+            $.ajax({
+                url: $form.attr('action'),
+                type: $form.attr('method'),
+                data: $form.serialize() + '&' + GetSerializedAntiForgeryToken(),
+                success: function (result) {
+                    if (result.OK) {
+                        //refresh the documents grid
+                        var docGrid = $('#documentGrid').data('kendoGrid');
+                        docGrid.dataSource.read();
+                    } else {
+                        alert(result.Error);
+                    }
+                },
+                complete: function () {
+                    HideLoading();
+                }
+            });
+        }
+
+        function DrawingDownloadClick() {
+            $("#DrawingDownloadDiv").children().prop('disabled', true);
+            ShowLoading();
+        }
+    
+        function ShowAuditPatentscopePopup() {
+            ShowLoading();
+            var appNums = '<%: Model.PatentDesignApplicationNumberTextBox %>';
+            var appPctNums = '<%: Model.ApplicationPctNumberTextBox %>';
+            var regNums = '<%: Model.PatentDesignRegistrationNumberTextBox %>';
+            //remove slash and comma from string
+            appNums = appNums.replace(',', '').replace('/', '');
+            regNums = regNums.replace(',', '').replace('/', '');
+            //var countryID = '66802'; //use this number for USPTO
+
+            var patentRequestUrl = '<%: Url.Action("RetrievePatentscopeAuditData", "Patents") %>' + '?countryLawID=' + $('#JurisdictionID').val()
+                    + '&appNums=' + appNums + '&appPctNums=' + appPctNums + '&regNums=' + regNums + '&patentID=' + '<%: Model.PatentID %>'
+                    + '&updatedPatentAudit=' + null + '&isPatentBeingUpdated=' + 'false';
+            $.ajax({
+                url: patentRequestUrl,
+                type: 'GET',
+                success: function (result) {
+                    if (result.PatentFound == false) {
+                        ShowPopup('#NoMatchFoundPopupDiv');
+                    }
+                    else {
+                        // Successful match
+                        if (result.PatentFound) {
+                            SetPatentscopeAuditData(result);
+                            ShowPopup('#patentscopeAuditPopupDiv');
+                        }
+                    }
+                }
+            });
+        }
+
+        function SetPatentscopeAuditData(result) {
+            document.getElementById("PatentscopeMatchFoundDiv").style.display = 'inline';
+            document.getElementById('TypeOfPsAuditLabel').innerHTML = "<%:Resources.Modules.Patents.Details.PatentscopeDataLabel %>";
+
+            document.getElementById('TodaysDatePsLabel').innerHTML = result.TodaysDate;
+            document.getElementById('LastAuditedOnPsLabel').innerHTML = result.LastAuditDate;
+
+            //jurisdiction - row 1
+ /*           document.getElementById('JurisdictionNamePsAuditLabel').innerHTML = result.JurisdictionNameAudit;
+            if (result.IsJurisdictionNameAuditMatch) {
+                document.getElementById("IsPsAuditJurisdictionName").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row1Ps').className = "highlight";
+            } */
+            //national phase jurisdictions - row 2
+            //document.getElementById('NationalPhaseJurisdictionsPsAuditLabel').innerHTML = result.NationalPhaseJurisdictionsAudit;
+
+            //if (result.IsNationalPhaseJurisdictionsAuditMatch) {
+            //    document.getElementById("IsPsAuditNationalPhaseJurisdiction").style.display = 'none';
+            //}
+            //else {
+            //    document.getElementById('Row2Ps').className = "highlight";
+            //}
+            ////designated countries - row 3
+            //document.getElementById('DesignatedCountriesPsAuditLabel').innerHTML = result.DesignatedCountriesAudit;
+
+            //if (result.IsDesignatedCountriesAuditMatch) {
+            //    document.getElementById("IsPsAuditDesignatedCountries").style.display = 'none';
+            //}
+            //else {
+            //    document.getElementById('Row3Ps').className = "highlight";
+            //}
+            ////designated countries - row 4
+            //document.getElementById('ConcernedCountriesPsAuditLabel').innerHTML = result.ConcernedCountriesAudit;
+
+            //if (result.IsConcernedCountriesAuditMatch) {
+            //    document.getElementById("IsPsAuditConcernedCountries").style.display = 'none';
+            //}
+            //else {
+            //    document.getElementById('Row4Ps').className = "highlight";
+            //}
+            //title - row 5
+            document.getElementById('TitlePsAuditLabel').innerHTML = result.TitleAudit;
+
+            if (result.IsTitleAuditMatch) {
+                document.getElementById("IsPsAuditTitle").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row5Ps').className = "highlight";
+            }
+            //status - row 6
+/*              document.getElementById('StatusPsAuditLabel').innerHTML = result.StatusAudit;
+            if (result.IsStatusAuditMatch) {
+                document.getElementById("IsPsAuditStatus").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row6Ps').className = "highlight";
+            }
+            //Type of Patent - row 7
+            document.getElementById('TypeOfPatentPsAuditLabel').innerHTML = result.TypeOfPatentAudit;
+            if (result.IsTypeOfPatentAuditMatch) {
+                document.getElementById("IsPsAuditTypeOfPatent").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row7Ps').className = "highlight";
+            }
+*/
+            //Priority Data - row 8
+            document.getElementById('PriorityDataPsAuditLabel').innerHTML = result.PriorityDataAudit;
+            document.getElementById('PrioritiesPsDataLabel').innerHTML = result.PrioritiesString;
+            if (result.IsPrioritiesAuditMatch) {
+                document.getElementById("IsPsAuditPriorities").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row8Ps').className = "highlight";
+            }
+            //Application Number - row 9
+            document.getElementById('ApplicationPctOrEpoNumberPsAuditLabel').innerHTML = result.ApplicationPctOrEpoNumberAudit;
+            document.getElementById('ApplicationPctOrEpoNumberLabel').innerHTML = result.ApplicationPctOrEpoNumber;
+
+            if (result.IsApplicationPCTOrEpoNumberAuditMatch) {
+                document.getElementById("IsPsAuditApplicationPCTOrEpoNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row9Ps').className = "highlight";
+            }
+            //PCT Filing Date - row 10
+            document.getElementById('PCTFilingDatePsAuditLabel').innerHTML = result.PctFilingDateAudit;
+            if (result.IsPctFilingDateAuditMatch) {
+                document.getElementById("IsPsAuditPCTFilingDate").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row10Ps').className = "highlight";
+            }
+            //Chapter Two Demand Filed - row 11
+            document.getElementById('ChTwoDemandFiledPsAuditLabel').innerHTML = result.ChTwoDemandFiledAudit;
+            if (result.IsChTwoDemandFiledAuditMatch) {
+                document.getElementById("IsPsAuditChTwoDemandFiled").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row11Ps').className = "highlight";
+            }
+            //Publication Number - row 12
+            document.getElementById('PublicationNumberPsAuditLabel').innerHTML = result.PatentDesignPublicationNumberAudit;
+            if (result.IsPatentDesignPublicationNumberMatch) {
+                document.getElementById("IsPsAuditPublicationNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row12Ps').className = "highlight";
+            }
+            //Publication Date - row 13
+            document.getElementById('PublicationDatePsAuditLabel').innerHTML = result.PublicationDateAudit;
+            if (result.IsPublicationDateAuditMatch) {
+                document.getElementById("IsPsAuditPublicationDate").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row13Ps').className = "highlight";
+            }
+            //IPC - row 14
+            document.getElementById('IpcNumberPsAuditLabel').innerHTML = result.IpcAudit;
+            if (result.IsIpcAuditMatch) {
+                document.getElementById("IsPsAuditIpcNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row14Ps').className = "highlight";
+            }
+            //CPC - row 15
+            document.getElementById('CpcNumberPsAuditLabel').innerHTML = result.CpcAudit;
+            if (result.IsCpcAuditMatch) {
+                document.getElementById("IsPsAuditCpcNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row15Ps').className = "highlight";
+            }
+
+            //inventors - row 16
+            document.getElementById('InventorsPsAuditLabel').innerHTML = result.InventorsNameAudit;
+            document.getElementById('InventorsPsLabel').innerHTML = result.InventorsString;
+            if (result.IsInventorsAuditMatch) {
+                document.getElementById("IsPsAuditInventors").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row16Ps').className = "highlight";
+            }
+            //Applicants - row 17
+            document.getElementById('ApplicantsPsAuditLabel').innerHTML = result.ApplicantsNameAudit;
+            document.getElementById('ApplicantsPsLabel').innerHTML = result.ApplicantsString;
+            if (result.IsApplicantsAuditMatch) {
+                document.getElementById("IsPsAuditApplicants").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row17Ps').className = "highlight";
+            }
+            //Assignees - row 18
+            document.getElementById('AssigneesPsAuditLabel').innerHTML = result.AssigneesNameAudit;
+            document.getElementById('AssigneesPsLabel').innerHTML = result.AssigneesString;
+            if (result.IsAssigneesAuditMatch) {
+                document.getElementById("IsPsAuditAssignees").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row18Ps').className = "highlight";
+            }
+            //Agent - row 19
+            document.getElementById('AgentsPsAuditLabel').innerHTML = result.AgentNameAudit;
+            document.getElementById('AgentsPsLabel').innerHTML = result.AgentsString;
+            if (result.IsAgentsAuditMatch) {
+                document.getElementById("IsPsAuditAgents").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row19Ps').className = "highlight";
+            }
+            //Also Published As Patent Family - row 20
+            document.getElementById('AlsoPubAsPatFamPsAuditLabel').innerHTML = result.AlsoPubAsPatFamAudit;
+            if (result.IsAlsoPubAsPatFamAuditMatch) {
+                document.getElementById("IsPsAuditAlsoPubAsPatFam").style.display = 'none';
+                document.getElementById('AlsoPubAsLabel').innerHTML = result.AlsoPubAsPatFamAudit;
+            }
+            else {
+                document.getElementById('Row20Ps').className = "highlight";
+            }
+            //Abstract - row 21
+            document.getElementById('AbstractPsAuditLabel').innerHTML = result.AbstractAudit;
+            if (result.IsAbstractAuditMatch) {
+                document.getElementById("IsPsAuditAbstract").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row21Ps').className = "highlight";
+            }
+            //Image - row 22
+        }
+
+        function ShowAuditPopup() {
+    	    ShowLoading();
+    	    var appNums = '<%: Model.PatentDesignApplicationNumberTextBox %>';
+    	    var regNums = '<%: Model.PatentDesignRegistrationNumberTextBox %>';
+    	    //remove slash and comma from string
+    	    appNums = appNums.replace(',', '').replace('/', '');
+    	    regNums = regNums.replace(',', '').replace('/', '');
+    	    var countryID = '66802'; //use this number for USPTO
+            var patentRequestUrl = '<%: Url.Action("RetrievePatentAuditData", "Patents") %>' + '?countryID=' + countryID
+                    + '&appNums=' + appNums + '&regNums=' + regNums + '&patentID=' + '<%: Model.PatentID %>'
+                    + '&updatedPatentAudit=' + null + '&isPatentBeingUpdated=' + 'false';
+    	    $.ajax({
+    	        url: patentRequestUrl,
+    	        type: 'GET',
+    	        success: function (result) {
+    	            if (result.PatentFound == false) {
+    	                ShowPopup('#NoMatchFoundPopupDiv');
+    	            }
+    	            else {
+    	                // Successful match
+    	                if (result.PatentFound) {
+    	                    SetAuditData(result);
+    	                    ShowPopup('#patentAuditPopupDiv');
+                        }
+    	            }
+    	        }
+    	    });
+        }
+
+        function SetAuditData(result) {
+            document.getElementById("MatchFoundDiv").style.display = 'inline';
+            document.getElementById('TypeOfAuditLabel').innerHTML = "<%:Resources.Modules.Patents.Details.USPTODataLabel %>";
+
+            document.getElementById('TodaysDateLabel').innerHTML = result.TodaysDate;
+            document.getElementById('LastAuditedOnLabel').innerHTML = result.LastAuditDate;
+
+            //jurisdiction - row 1
+            document.getElementById('JurisdictionNameLabel').innerHTML = result.JurisdictionNameAudit;
+            if (result.IsJurisdictionNameAuditMatch) {
+                document.getElementById("IsAuditJurisdictionName").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row1').className = "highlight";
+            }
+            //title - row 2
+            document.getElementById('PatentNameLabel').innerHTML = result.PatentNameAudit;
+
+            if (result.IsPatentNameAuditMatch) {
+                document.getElementById("IsAuditPatentName").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row2').className = "highlight";
+            }
+            //status - row 3
+            document.getElementById('StatusLabel').innerHTML = result.StatusAudit;
+            if (result.IsStatusAuditMatch) {
+                document.getElementById("IsAuditStatus").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row3').className = "highlight";
+            }
+            //Type of Patent - row 4
+            document.getElementById('TypeOfPatentAuditLabel').innerHTML = result.TypeOfPatentAudit;
+            if (result.IsTypeOfPatentAuditMatch) {
+                document.getElementById("IsAuditTypeOfPatent").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row4').className = "highlight";
+            }
+            //Priority Data - row 5
+            document.getElementById('PriorityDataAuditLabel').innerHTML = result.PriorityDataAudit;
+            document.getElementById('PrioritiesDataLabel').innerHTML = result.PrioritiesString;
+            if (result.IsPrioritiesAuditMatch) {
+                document.getElementById("IsAuditPriorities").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row5').className = "highlight";
+            }
+            //Application Number - row 6
+            document.getElementById('ApplicationNumberAuditLabel').innerHTML = result.ApplicationNumberAudit;
+            if (result.IsApplicationNumberAuditMatch) {
+                document.getElementById("IsAuditApplicationNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row6').className = "highlight";
+            }
+            //Filing Date - row 7
+            document.getElementById('FilingDateAuditLabel').innerHTML = result.FilingDateAudit;
+            if (result.IsFilingDateAuditMatch) {
+                document.getElementById("IsAuditFilingDate").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row7').className = "highlight";
+            }
+            //Publication Number - row 8
+            document.getElementById('PublicationNumberAuditLabel').innerHTML = result.PublicationNumberAudit;
+            if (result.IsPublicationNumberAuditMatch) {
+                document.getElementById("IsAuditPublicationNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row8').className = "highlight";
+            }
+            //Publication Date - row 9
+            document.getElementById('PublicationDateAuditLabel').innerHTML = result.PublicationDateAudit;
+            if (result.IsPublicationDateAuditMatch) {
+                document.getElementById("IsAuditPublicationDate").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row9').className = "highlight";
+            }
+            //Patent Number - row 10
+            document.getElementById('PatentNumberAuditLabel').innerHTML = result.PatentNumberAudit;
+            if (result.IsPatentNumberAuditMatch) {
+                document.getElementById("IsAuditPatentNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row10').className = "highlight";
+            }
+            //Grant Date - row 11
+            document.getElementById('GrantDateAuditLabel').innerHTML = result.GrantDateAudit;
+            if (result.IsGrantDateAuditMatch) {
+                document.getElementById("IsAuditGrantDate").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row11').className = "highlight";
+            }
+            //Family ID - row 12
+            document.getElementById('FamilyIDAuditLabel').innerHTML = result.FamilyIDAudit;
+            if (result.IsFamilyIDAuditMatch) {
+                document.getElementById("IsAuditFamilyID").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row12').className = "highlight";
+            }
+            //USPC - row 13
+            document.getElementById('USPCAuditLabel').innerHTML = result.USPCAudit;
+            if (result.IsUSPCAuditMatch) {
+                document.getElementById("IsAuditUSPC").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row13').className = "highlight";
+            }
+            //Application/PCT Number - row 14
+            document.getElementById('ApplicationPctNumberAuditLabel').innerHTML = result.ApplicationPCTNumberAudit;
+            if (result.IsApplicationPCTNumberAuditMatch) {
+                document.getElementById("IsAuditApplicationPCTNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row14').className = "highlight";
+            }
+            //PCT Filing Date - row 15
+            //document.getElementById('PCTFilingDateAuditLabel').innerHTML = result.PCTFilingDateAudit;
+            //if (result.IsPCTFilingDateAuditMatch) {
+            //    document.getElementById("IsAuditPCTFilingDate").style.display = 'none';
+            //}
+            //else {
+            //    document.getElementById('Row15').className = "highlight";
+        	//}
+
+
+        	//WIPO Publication Number - row 16
+            document.getElementById('WIPOPublicationNumberAuditLabel').innerHTML = result.WIPOPublicationNumberAudit;
+            //document.getElementById('WIPOPublicationNumberLabel').innerHTML = result.WIPOPublicationNumberString;
+            if (result.IsWIPOPublicationNumberAuditMatch) {
+            	document.getElementById("IsAuditWIPOPublicationNumber").style.display = 'none';
+            }
+            else {
+            	document.getElementById('Row16').className = "highlight";
+            }
+        	//WIPO Publication Date - row 17
+            document.getElementById('WIPOPublicationDateAuditLabel').innerHTML = result.WIPOPublicationDateAudit;
+            //document.getElementById('WIPOPublicationDateLabel').innerHTML = result.WIPOPublicationDateString;
+            if (result.IsWIPOPublicationDateAuditMatch) {
+            	document.getElementById("IsAuditWIPOPublicationDate").style.display = 'none';
+            }
+            else {
+            	document.getElementById('Row17').className = "highlight";
+            }
+        	//PTA Days - row 18
+            document.getElementById('PTADaysAuditLabel').innerHTML = result.PTADaysAudit;
+            //document.getElementById('PTADaysLabel').innerHTML = result.PTADaysString;
+            if (result.IsPTADaysAuditMatch) {
+            	document.getElementById("IsAuditPTADays").style.display = 'none';
+            }
+            else {
+            	document.getElementById('Row18').className = "highlight";
+            }
+        	//IPC - row 19
+            document.getElementById('IpcNumberAuditLabel').innerHTML = result.IPCAudit;
+            //document.getElementById('IpcNumberLabel').innerHTML = result.IPCString;
+            if (result.IsIpcAuditMatch) {
+            	document.getElementById("IsAuditIpcNumber").style.display = 'none';
+            }
+            else {
+            	document.getElementById('Row19').className = "highlight";
+            }
+        	//CPC - row 20
+            document.getElementById('CpcNumberAuditLabel').innerHTML = result.CPCAudit;
+            //document.getElementById('CpcNumberLabel').innerHTML = result.CPCString;
+            if (result.IsCpcAuditMatch) {
+            	document.getElementById("IsAuditCpcNumber").style.display = 'none';
+            }
+            else {
+            	document.getElementById('Row20').className = "highlight";
+            }
+        	//Chap 2 demand filed date - row 21
+            document.getElementById('ChTwoDemandFiledAuditLabel').innerHTML = result.ChTwoDemandFiledAudit;
+            //document.getElementById('ChTwoDemandFiledLabel').innerHTML = result.ChTwoDemandFiledString;
+            if (result.IsChTwoDemandFiledAuditMatch) {
+            	document.getElementById("IsAuditChTwoDemandFiled").style.display = 'none';
+            }
+            else {
+            	document.getElementById('Row21').className = "highlight";
+            }
+
+
+            //inventors - row 22
+            document.getElementById('InventorsAuditLabel').innerHTML = result.InventorsNameAudit;
+            document.getElementById('InventorsLabel').innerHTML = result.InventorsString;
+            if (result.IsInventorsAuditMatch) {
+                document.getElementById("IsAuditInventors").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row22').className = "highlight";
+            }
+            //Applicants - row 23
+            document.getElementById('ApplicantsAuditLabel').innerHTML = result.ApplicantsNameAudit;
+            document.getElementById('ApplicantsLabel').innerHTML = result.ApplicantsString;
+            if (result.IsApplicantsAuditMatch) {
+                document.getElementById("IsAuditApplicants").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row23').className = "highlight";
+            }
+            //Assignees - row 24
+            document.getElementById('AssigneesAuditLabel').innerHTML = result.AssigneesNameAudit;
+            document.getElementById('AssigneesLabel').innerHTML = result.AssigneesString;
+            if (result.IsAssigneesAuditMatch) {
+                document.getElementById("IsAuditAssignees").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row24').className = "highlight";
+            }
+            //Agent - row 25
+            document.getElementById('AgentsAuditLabel').innerHTML = result.AgentNameAudit;
+            document.getElementById('AgentsLabel').innerHTML = result.AgentsString;
+            if (result.IsAgentsAuditMatch) {
+                document.getElementById("IsAuditAgents").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row25').className = "highlight";
+            }
+            //Entity Status - row 26
+            document.getElementById('EntityStatusAuditLabel').innerHTML = result.EntityStatusAudit;
+            if (result.IsEntityStatusAuditMatch) {
+                document.getElementById("IsAuditEntityStatus").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row26').className = "highlight";
+            }
+            //AIA - row 27
+            document.getElementById('AiaAuditLabel').innerHTML = result.AIAAudit;
+            if (result.IsAIAAuditMatch) {
+                document.getElementById("IsAuditAIA").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row27').className = "highlight";
+            }
+            //Examiner - row 28
+            document.getElementById('ExaminerAuditLabel').innerHTML = result.ExaminerAudit;
+            if (result.IsExaminerAuditMatch) {
+                document.getElementById("IsAuditExaminer").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row28').className = "highlight";
+            }
+            //Group Art Unit - row 29
+            document.getElementById('GroupArtUnitAuditLabel').innerHTML = result.GroupArtUnitAudit;
+            if (result.IsGroupArtUnitAuditMatch) {
+                document.getElementById("IsAuditGroupArtUnit").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row29').className = "highlight";
+            }
+            //Confirmation Number - row 30
+            document.getElementById('ConfirmationNumberAuditLabel').innerHTML = result.ConfirmationNumberAudit;
+            if (result.IsConfirmationNumberAuditMatch) {
+                document.getElementById("IsAuditConfirmationNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row30').className = "highlight";
+            }
+            //Attorney Docket Number - row 31
+            document.getElementById('AttorneyDocketNumberAuditLabel').innerHTML = result.AttorneyDocketNumberAudit;
+            if (result.IsAttorneyDocketNumberAuditMatch) {
+                document.getElementById("IsAuditAttorneyDocketNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row31').className = "highlight";
+            }
+            //Customer Number - row 32
+            document.getElementById('CustomerNumberAuditLabel').innerHTML = result.CustomerNumberAudit;
+            if (result.IsCustomerNumberAuditMatch) {
+                document.getElementById("IsAuditCustomerNumber").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row32').className = "highlight";
+            }
+            //Location - row 33
+            document.getElementById('LocationAuditLabel').innerHTML = result.LocationAudit;
+            if (result.IsLocationAuditMatch) {
+                document.getElementById("IsAuditLocation").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row33').className = "highlight";
+            }
+            //Abstract - row 34
+            document.getElementById('AbstractAuditLabel').innerHTML = result.AbstractAudit;
+            if (result.IsAbstractAuditMatch) {
+                document.getElementById("IsAuditAbstract").style.display = 'none';
+            }
+            else {
+                document.getElementById('Row34').className = "highlight";
+            }
+        }
+        function UpdateLastAuditDate() {
+
+            if ('<%: Model.PatentID %>' != null) {
+                Loading();
+                var updateLastAuditDateRequestUrl = '<%: Url.Action("UpdateLastAuditDate", "Patents") %>' + '?patentID=' + '<%: Model.PatentID %>';
+                $.ajax({
+                        url: updateLastAuditDateRequestUrl,
+                        type: 'GET',
+                        success: function (result) {
+                    }
+                }).always(function () {
+                    $("#loading").fadeOut();
+                    $('#mask , .popup').fadeOut(300, function () {
+                        $('#mask').remove();
+                    });
+
+                    // Allows scrolling within body again
+                    document.body.style.overflow = "visible";
+                });
+            }
+        }
+
+        function Loading() {
+            $("#loading").fadeIn();
+            var opts = {
+                lines: 12, // The number of lines to draw
+                length: 7, // The length of each line
+                width: 4, // The line thickness
+                radius: 10, // The radius of the inner circle
+                color: '#f5f5f5', // #rgb or #rrggbb
+                speed: 1, // Rounds per second
+                trail: 60, // Afterglow percentage
+                shadow: false, // Whether to render a shadow
+                hwaccel: false // Whether to use hardware acceleration
+            };
+            var target = document.getElementById('loading');
+            var spinner = new Spinner(opts).spin(target);
+        }
+        function CheckAnnuityPaymentProvider() {
+            var ID = GetSelectedAutoCompleteID('AnnuityPaymentProviderCompanyName');
+
+            if (ID == "" || ID == "<%: Guid.Empty %>" || ID == "0") {
+                //no existing AnnuityPaymentProviderCompany selected, this is a new one
+                var autoComplete = $("#AnnuityPaymentProviderCompanyName").data("kendoAutoComplete");
+                var selectedItem = autoComplete.value();
+                if (selectedItem != "") {
+                    $("#CompanyNameTextBox").val(selectedItem);
+                    $("#CompanyNameType").val('<%: Resources.Modules.Trademarks.TrademarkDetails.OwnerLabel %>');
+                    //display popup to add the new company
+                    ShowPopup('#NewCompanyPopupDiv');
+                    return false;
+                }
+            }
+        }
+        function onAnnuityPaymentProviderChange(e) {
+            var ID = GetSelectedAutoCompleteID('AnnuityPaymentProviderCompanyName');
+            if (ID == false) {
+                $('#AnnuityPaymentProviderCompanyID').val('<%: Guid.Empty %>');
+            }
+            else {
+                $('#AnnuityPaymentProviderCompanyID').val(ID);
+            }
+        }
+        function CheckApplicant() {
+            var ID = GetSelectedAutoCompleteID('ApplicantCompanyName');
+
+            if (ID == "" || ID == "<%: Guid.Empty %>" || ID == "0") {
+                //no existing ApplicantCompany selected, this is a new one
+                var autoComplete = $("#ApplicantCompanyName").data("kendoAutoComplete");
+                var selectedItem = autoComplete.value();
+                if (selectedItem != "") {
+                    $("#CompanyNameTextBox").val(selectedItem);
+                    $("#CompanyNameType").val('<%: Resources.Modules.Trademarks.TrademarkDetails.OwnerLabel %>');
+                    //display popup to add the new company
+                    ShowPopup('#NewCompanyPopupDiv');
+                    return false;
+                }
+            }
+        }
+        function onApplicantChange(e) {
+            var ID = GetSelectedAutoCompleteID('ApplicantCompanyName');
+            if (ID == false) {
+                $('#ApplicantCompanyID').val('<%: Guid.Empty %>');
+            }
+            else {
+                $('#ApplicantCompanyID').val(ID);
+            }
+        }
+        function CheckOwner() {
+            var ID = GetSelectedAutoCompleteID('OwnerCompanyName');
+
+            if (ID == "" || ID == "<%: Guid.Empty %>" || ID == "0") {
+                //no existing OwnerCompany selected, this is a new one
+                var autoComplete = $("#OwnerCompanyName").data("kendoAutoComplete");
+                var selectedItem = autoComplete.value();
+                if (selectedItem != "") {
+                    $("#CompanyNameTextBox").val(selectedItem);
+                    $("#CompanyNameType").val('<%: Resources.Modules.Trademarks.TrademarkDetails.OwnerLabel %>');
+                    //display popup to add the new company
+                    ShowPopup('#NewCompanyPopupDiv');
+                    return false;
+                }
+            }
+        }
+        function onOwnerChange(e) {
+            var ID = GetSelectedAutoCompleteID('OwnerCompanyName');
+            if (ID == false) {
+                $('#OwnerCompanyID').val('<%: Guid.Empty %>');
+            }
+            else {
+                $('#OwnerCompanyID').val(ID);
+            }
+        }
+
+        function CheckFirstNamedInventor() {
+            var ID = GetSelectedAutoCompleteID('FirstNamedInventorCompanyName');
+
+            if (ID == "" || ID == "<%: Guid.Empty %>" || ID == "0") {
+                //no existing FirstNamedInventorCompany selected, this is a new one
+                var autoComplete = $("#FirstNamedInventorCompanyName").data("kendoAutoComplete");
+                var selectedItem = autoComplete.value();
+                if (selectedItem != "") {
+                    $("#CompanyNameTextBox").val(selectedItem);
+                    $("#CompanyNameType").val('<%: Resources.Modules.Trademarks.TrademarkDetails.OwnerLabel %>');
+                    //display popup to add the new company
+                    ShowPopup('#NewCompanyPopupDiv');
+                    return false;
+                }
+            }
+        }
+        function onFirstNamedInventorChange(e) {
+            var ID = GetSelectedAutoCompleteID('FirstNamedInventorCompanyName');
+            if (ID == false) {
+                $('#FirstNamedInventorCompanyID').val('<%: Guid.Empty %>');
+            }
+            else {
+                $('#FirstNamedInventorCompanyID').val(ID);
+            }
+        }
+
+        function OnChangeRecordCheckedBy(e) {
+            var dropDown = $('#RecordCheckedBy').data('kendoDropDownList');
+            var selectedItem = dropDown.dataItem();
+            var personID = selectedItem.Value;
+            $('#RecordCheckedByID').val(personID);
+        }
+        function OnChangeRecordCheckedDate(e) {
+            var datepicker = $("#RecordCheckedDate").data("kendoDatePicker");
+            //alert(kendo.toString(datepicker.value(), 'd'));
+            //var selectedDate = new Date(datepicker.value());
+            $('#DateChecked').val(kendo.toString(datepicker.value(), 'd'));
+        }
+        function ShowPatentSearchPopup(popupTask) {
+            $('#PopupTask').val(popupTask);
+            ShowPopup('#PatentSearchPopupDiv');
+        }
+        function ShowCopyPatentPopup() {
+            ShowPopup('#CopyPatentDiv');
+        }
+
+    </script>
+	<% using (Html.BeginForm("AddDocuments", "Patents", FormMethod.Post, new { id = "addDocumentsForm" })){ %>
+		<%-- AntiForgeryToken will be added by JS --%>
+		<input type="hidden" name="patentID" value="<%: Model.PatentID %>"/>
+		<input type="hidden" name="applicationNumber" value="<%: Model.PatentDesignApplicationNumberTextBox %>" />
+        <input type="hidden" name="applicationPctNumber" value="<%: Model.ApplicationPctNumberTextBox %>" />
+		<input type="hidden" name="wipoCode" value="<%: Model.WipoCode %>" />
+	<% } %>
+
+    <div id="NewCompanyPopupDiv" class="popup">
+        <%: Html.Partial("_NewDetailsCompanyPartial", Model.NewCompanyModel) %>
+    </div>
+    <div id="PatentSearchResultsPopupDiv" class="popup">
+        <%: Html.Partial("_SearchResultsPartial", Model.QuickSearchResults) %>
+    </div>
+    <div id="PatentSearchPopupDiv" class="popup">
+        <%: Html.Partial("_PatentQuickSearchPartial", Model.PatentSearch) %>
+    </div>
+    <div id="PatentQuickSearchResultsPopupDiv" class="popup">
+        <%: Html.Partial("_PatentQuickSearchResultsPartial", Model.PatentQuickSearchResults) %>
+    </div>
+
+	<div id="loading">
+		<div id="loadingcontent">
+			<p id="loadingspinner" style="color: white;">
+				<%: Resources.Common.Common.ProcessingLabel %>
+			</p>
+		</div>
+	</div>
+	<div style="display:none">
+		<div id="helpWindow">
+			<%: Html.Partial ("../Common/_DetailsHelpPartial") %>
+		</div>
+	</div>
+
+	<div class="grid_29 alpha omega">
+		<div id="PatentLinksPopupDiv" class="popup">
+			<%: Html.Partial("_PatentLinksPartial", Model.DetailsHelp) %>
+		</div>
+        <div id="EarliestPriorityDatePopupDiv" class="popup">
+            <%: Html.Partial("_EarliestPriorityDatePartial", Model.DetailsEarliestPriorityDate) %>
+        </div>
+		<div id="ArchivedFloatDiv" class="prefix_1 grid_27 alpha omega textCenter" style="display: none;position:fixed;top:0px;z-index:100">
+			<div class="Rounded" style="color: #29537C; background-color: <%: TMCloud.Globals.SYSTEM_COLOR_GRAY %>; border: 1px solid <%: TMCloud.Globals.SYSTEM_COLOR_GRAY_BORDER %>">
+				<div class="insidePadding">
+					<div>
+						<span><%: Html.LabelFor(m => m.ArchivedLabel, new { @class = "formBoldAltLabel" }) %></span>
+					</div>
+				</div>
+			</div>
+		</div>
+        <div id="NoMatchFoundPopupDiv" class="popup" style="z-index: 5 !important;">
+            <div style="border: solid 1px #aaaaaa; width: 505px">
+                <div class="grid_29 alpha omega textCenter">
+                    <div class="headerDiv" style="width: 505px;">
+                        <div class="pad10"></div>
+                        <a href="#" class="close">
+                            <img src="<%: Url.Content("~/Images/close_pop.png") %>" class="btn_close" title="<%: Resources.Common.Common.CloseWindow %>" alt="Close" onclick="ClosePopup()" /></a>
+                        <%: Resources.Modules.Patents.Details.AuditErrorHeaderLabel %>
+                        <div class="pad15">
+                        </div>
+                    </div>
+                    <div class="pad5">
+                    </div>
+                    <img id="QueenError" width="100px" src="<%: Url.Content("~/Images/Icons/queen.png") %>" />
+                    <div class="pad5">
+                    </div>
+                    <%: Resources.Modules.Patents.Details.AuditErrorMessageLabel %>
+                    <div class="pad10">
+                    </div>
+                    <a href="#" class="close">
+                        <input id="ConfirmAuditErrorButton" type="button" onclick="ClosePopup()" value="<%: Resources.Common.Common.OkayButton %>" class="btn_close BlueButton" />
+                    </a>
+                </div>
+                <div class="pad5">
+                </div>
+            </div>
+        </div>
+        <div id="patentscopeAuditPopupDiv" class="popup">
+            <%: Html.Partial("_AuditPatentscopePartial", Model.AuditPatentsPartial) %>
+        </div>
+        <div id="patentAuditPopupDiv" class="popup">
+            <%: Html.Partial("_AuditPatentsPartial", Model.AuditPatentsPartial) %>
+        </div>
+        <div id="CopyPatentDiv" class="popup">
+            <%: Html.Partial("_CopyPatentPartial", Model.ViewEditPatentHelp) %>
+        </div>
+		<div class="pad5"></div>
+<%--	<% using (Html.BeginForm("UpdateSubmit", "Patents", FormMethod.Post, new { id = "PatentForm" })){ %>--%>
+		<% using (Html.BeginForm(Model.ActionPrefix + "UpdateSubmit", "Patents", FormMethod.Post, new { id = "PatentForm" }))
+	{ %>
+			<%: Html.AntiForgeryToken() %>
+			<%: Html.HiddenFor(m => m.PatentID) %>
+			<%: Html.HiddenFor(m => m.JurisdictionID) %>
+			<%: Html.HiddenFor(m => m.RegionID) %>
+			<%: Html.HiddenFor(m => m.FooterID) %>
+            <%: Html.HiddenFor(m => m.ModuleName) %>
+            <%: Html.HiddenFor(m => m.DocketsGridRowID) %>
+			<%: Html.HiddenFor(m => m.PatentDesignTypeID) %>
+			<%: Html.HiddenFor(m => m.AnnuityPaymentProviderCompanyID) %>
+            <%: Html.HiddenFor(m => m.ApplicantCompanyID) %>
+            <%: Html.HiddenFor(m => m.OwnerCompanyID) %>
+            <%: Html.HiddenFor(m => m.FirstNamedInventorCompanyID) %>
+            <%: Html.HiddenFor(m => m.RecordCheckedByID) %>
+            <%: Html.HiddenFor(m => m.DateChecked) %>
+    
+			<!-- trademark quick search -->
+			<%: Html.HiddenFor(m => m.SelectedTrademarkAddRecordIDs) %>
+            <!-- patent quick search -->
+            <%: Html.HiddenFor(m => m.SelectedPatentLinkRecordIDs) %>
+
+            <%: Html.HiddenFor(m => m.SetAppDateAsEarliestPrioritypDate) %>
+            <%: Html.HiddenFor(m => m.SelectedJournalRecordIDs) %>
+            <%: Html.HiddenFor(m => m.PopupTask) %>
+
+        <div style="display: none;">
+            <div id="ButtonsDiv" class="prefix_1 grid_29 alpha no-print" style="padding-left: 5px; color: white !important;">
+                <div class="floatLeft">
+                    <table style="width: 100%">
+                        <tr>
+                            <td>
+                                <%: Html.EmailButton(TMCloud.Globals.TEMPLATE_SECTION_HEADER, Model.JurisdictionID) %>
+                            </td>
+                            <td>
+                                <%: Html.DocumentButton(TMCloud.Globals.TEMPLATE_SECTION_HEADER, Model.JurisdictionID, htmlAttributes: new { @class = "left10" }) %>
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+                <div id="Carousel" class="floatLeft">
+                    <div class="floatRight" style="padding-right: 10px;">
+                        <%-- only display carousel if we got here from a Patent search or a docket search
+                             and we have a non-zero position (zero indicates we didn't get here from a hits page) --%>
+                        <% if (Model.Carousel != null && Model.Carousel.Position > 0 && (string.Compare(Model.Carousel.ControllerName, "Patents", true) == 0 || string.Compare(Model.Carousel.ControllerName, "Dockets", true) == 0)) { %>
+                        <span class="floatRight">
+	                            <%: Html.DisplayFor(m => m.Carousel) %>
+                        </span>
+                        <% } %>
+                    </div>
+                </div>
+                <div class="floatRight" style="padding-right: 10px;">
+                    <span class="floatRight left5">
+                        <a class="k-button k-button-icontext padBottom5">
+                            <img id="PrintButton" height="15" onclick="window.print();" title="<%:Resources.Modules.Trademarks.TrademarkDetails.Print %>" class="CursorPointer" src="<%: Url.Content("~/Images/Icons/printer2.png") %>" />
+                        </a>
+                    </span>
+                    <span class="floatRight left15">
+                        <a id="helpButton" class="k-button k-button-icontext login-window helpButton padBottom5">
+                            <img id="HelpImage" height="15" class="CursorPointer" src="<%: Url.Content("~/Images/Icons/help2.png") %>" />
+                        </a>
+                    </span>
+
+                    <% if (Model.IsPatentscopeJurisdiction && Model.PatentDesignTypeName != TMCloud.Globals.PATENT_DESIGN_TYPE_DESIGN_PATENT 
+                            && Model.PatentDesignTypeName !=  TMCloud.Globals.PATENT_DESIGN_TYPE_INDUSTRIAL_DESIGN 
+                            && Model.PatentDesignTypeName !=  TMCloud.Globals.PATENT_DESIGN_TYPE_REGISTERED_DESIGN
+                            ) { %>
+                        <span class="floatRight" style="margin-top: 3px;">
+                            &nbsp;|<a href="javascript:ShowAuditPatentscopePopup()" class="left5" style="margin-top: 3px;"><%:Resources.Modules.Patents.Details.AuditPatentscopeLabel%></a>
+                        </span>
+                    <% } %>
+
+                    <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_USA) { %>
+                        <span class="floatRight" style="margin-top: 3px;">
+                            &nbsp;|<a href="javascript:ShowAuditPopup()" class="left5" style="margin-top: 3px;"><%:Resources.Modules.Patents.Details.AuditLabel%></a>
+                        </span>
+                    <% } %>
+
+<%--                    <% if (Model.CanEditHeader)
+                        { %>--%>
+                    <span class="floatRight" style="margin-top: 3px;">
+                        &nbsp;|<a href="javascript:ShowCopyPatentPopup()" class="left5" style="margin-top: 3px;"><%:Resources.Modules.Trademarks.TrademarkDetails.CopyLabel%></a> 
+                    </span>
+<%--                    <% } %>--%>
+
+                    <span class="floatRight" style="margin-top: 3px;">
+                        &nbsp;|<a href="javascript:ShowPatentLinksPopup()" class="left5"><%:Resources.Modules.Patents.Details.SearchPatentDatabasesButton%></a>
+                    </span>
+
+                    <% if(Model.ParentPatentID != null && Model.ParentPatentID != Guid.Empty) { %>
+                        <span class="floatRight" style="margin-top: 3px;">
+                            &nbsp;|<a href="<%: @Url.Action("View", "Patents", new {@ID=Model.ParentPatentID}) %>" class="left5"><%: Resources.Modules.Patents.Details.BasePctRecordLabel %></a>
+                        </span>
+                    <% } %>
+                    <%--add button should be the left most button on blue bar right side--%>
+                    <% if (Model.CanCreate){ %>
+                        <span class="floatRight bold" style="margin-top: 3px;">
+                            <a href="<%: Url.Action("New", "Patents") %>" class="left5"><%: Resources.Modules.Patents.Search.AddANewRecordButton %></a>
+                        </span>
+                    <% } %>
+                </div>
+            </div>
+        </div>
+        <div class="prefix_8 grid_9 alpha omega">
+			<div id="NewRecordCreatedDiv" class="textCenter" style="display: none;">
+				<div class="Rounded" style="color: #29537C; background-color: #CFE2FF; border: 1px solid #6BA6EB">
+					<div class="insidePadding">
+						<div>
+							<span><%: Html.LabelFor(m => m.NewRecordCreatedLabel, new{@class="formBoldAltLabel"})%></span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+        <div class="prefix_8 grid_9 alpha omega">
+			<div id="RecordArchivedDiv" class="textCenter" style="display: none;">
+				<div class="Rounded" style="color: #29537C; background-color: <%: TMCloud.Globals.SYSTEM_COLOR_GRAY %>; border: 1px solid <%: TMCloud.Globals.SYSTEM_COLOR_GRAY_BORDER %>">
+					<div class="insidePadding">
+						<div>
+							<span><%: Html.LabelFor(m=>m.ArchivedLabel, new{@class="formBoldAltLabel"})%></span>
+						</div>
+					</div>
+				</div>
+			</div>
+		</div>
+        <div class="prefix_8 grid_9 alpha omega">
+			<% if (Model != null && !string.IsNullOrEmpty(Model.ErrorMessage)){ %>
+			<div class="Rounded" style="background-color: #FEFED4; border: 1px solid #FFFF33; text-align:center">
+				<div class="insidePadding">
+					<p>
+						<img id="WarningSign" src="<%: Url.Content("~/Images/Icons/warning.png") %>" />
+						<%: Model.ErrorMessage %>
+					</p>
+				</div>
+			</div>
+			<% } %>
+		</div>
+        <div class="pad30"></div>
+        <div class="grid_28 prefix_1 alpha textLeft">
+            <% if (Model.CanEditHeader){ %>
+                <div class="no-print">
+                    <table style="width: 100%">
+                        <tr>
+                            <td>
+                                <a href="<%: Model.EditLink %>" class="editButton" id="EditButton"><%: Resources.Modules.Trademarks.TrademarkDetails.EditButton %></a>
+                                <input id="SaveButton" type="button" onclick="SubmitForm()" value="<%: Resources.Modules.Trademarks.TrademarkDetails.SaveButton %>" class="BlueButton" />
+                            </td>
+                        </tr>
+                    </table>
+                </div>
+            <% } %>
+		</div>
+		<div class="pad20"></div>
+    	<div class="grid_19 prefix_1 alpha omega textLeft">
+			<% if (ViewBag.ReadOnly == false) {%>
+			    <%: Html.LabelFor(m=>m.TitleLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.TitleTooltip})%>
+    		    <div class="clear"></div>
+				<%: Html.TextBoxFor(m=>m.TitleTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="formBoldLabel" style="font-size: 24px; color: #4a6986; line-height: 26px;"><%: Model.TitleTextBox %></span>
+			<% } %>
+        </div>
+		<% if (ViewBag.ReadOnly) {%>
+    		<div class="clear"></div>
+    	    <div class="grid_15 prefix_1 alpha textLeft">
+                <span class="right5">
+				<% if (Model.IsDesign) { %>
+                    <a href="javascript:OpenApplicationNumberURL()" style="color: #4a6986; text-decoration: underline; font-size: 7pt;"><%: Resources.Modules.Patents.Details.ViewDesignViewLink %></a>
+                <% } else if (Model.WipoCode == TMCloud.Globals.WIPO_CODE_HONGKONG){ %>
+                    <a href="javascript:OpenApplicationNumberURL()" style="color: #4a6986; text-decoration: underline; font-size: 7pt;"><%: Resources.Modules.Patents.Details.ViewHKDatabaseLink %></a>
+                <% } else if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_EPO){ %>
+                    <a href="javascript:OpenApplicationNumberURL()" style="color: #4a6986; text-decoration: underline; font-size: 7pt;"><%: Resources.Modules.Patents.Details.ViewEuropeanPatentRegisterLink %></a>
+                <% } else if (Model.WipoCode != "PCT"){ %>
+                    <a href="javascript:OpenApplicationNumberURL()" style="color: #4a6986; text-decoration: underline; font-size: 7pt;"><%: Resources.Modules.Patents.Details.ViewPatentScopeLink %></a>
+                <% } else{ %>
+                    <%if (Model.ApplicationPctNumberTextBox != null){ %><a href="javascript:OpenApplicationPCTNumberURL()" style="color: #4a6986; text-decoration: underline; font-size: 7pt;"><%: Resources.Modules.Patents.Details.ViewPatentScopeLink %></a><%}else{ %>&nbsp;<%} %>
+                <% } %>
+
+                </span>
+                <% if (!string.IsNullOrWhiteSpace(Model.PatentDesignApplicationNumberTextBox) && Model.IsAustralia == true){ %>
+                    <span class="right5">   
+                        <a href="<%: Model.AusPatentsLink %>" target="_blank" style="color: #4a6986; text-decoration: underline; font-size: 7pt;"><%: Resources.Modules.Patents.Details.ViewAusPatLabel %></a>
+                    </span>
+                <% } %>
+
+                <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_USA){ %>
+                    <a href="https://portal.uspto.gov/pair/PublicPair" target="_blank" style="color: #4a6986; text-decoration: underline; font-size: 7pt;" class="right5"><%: Resources.Modules.Patents.Details.ViewPairLink %></a>
+                <% } %>
+
+                <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_USA){ %>
+                    <% if (Model.PatentDesignRegistrationNumberTextBox != null){ %>
+                        <span class="right5">
+                    <a href="http://patft.uspto.gov/netacgi/nph-Parser?patentnumber=<%: Model.PatentDesignRegistrationNumberTextBox %>" target="_blank" style="color: #4a6986; text-decoration:underline; font-size: 7pt;"><%: Resources.Modules.Patents.Details.ViewUsPatftLink %></a>
+                    </span>
+                    <%}else{ %>&nbsp;<%} %>
+                <% } %>
+
+            </div>
+		<% } %>
+		<div class="pad20"></div>
+		<% if (Model.CanViewHeader) { %>
+        <div class="grid_9 prefix_1 alpha">
+			<%: Html.LabelFor(m=>m.PatentIDLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.PatentIDTooltip})%>
+    		<div class="clear"></div>
+			<span class="Gray14"><%: Model.PatentIDNumber  %></span>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.MatterNumberLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.MatterNumberTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.MatterNumberTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.MatterNumberTextBox != null){ %><%: Model.MatterNumberTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.FileReferenceLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.FileReferenceTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m=>m.FileReferenceTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.FileReferenceTextBox != null){ %><%: Model.FileReferenceTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.AttorneyDocketNumberLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.AttorneyDocketNumberTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m=>m.AttorneyDocketNumber, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.AttorneyDocketNumber != null){ %><%: Model.AttorneyDocketNumber %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.JurisdictionWipoLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.JurisdictionWipoTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false){%>
+				<%= Html.Kendo().AutoCompleteFor(m => m.JurisdictionName)
+					.Name("JurisdictionName")
+					.DataTextField("Text")
+					.HtmlAttributes(new { style = "width: 80%;font-weight:bold;color: #336699;" })
+					.Filter("contains")
+					.BindTo(Model.JurisdictionList)
+					.Value(Model.JurisdictionName)
+					.Events(e =>
+					{
+						e.Change("onJurisdictionChange");
+					})
+				%>
+			<%}else{ %>
+				<%if (Model.JurisdictionID != null &&  Model.JurisdictionID != Guid.Empty){ %>
+					<%: Html.ActionLink(Model.JurisdictionName, "ViewJurisdiction", "CountryLaw", new { ID = Model.JurisdictionID}, new{ @style="text-decoration: underline; color: #4a6986 !important; font-weight: bold !important;", target = "_blank"}) %>
+				<%}else{ %>
+                    <%: Model.JurisdictionName %>
+                <%} %>
+			<% } %>
+                    -
+                    <% if (ViewBag.ReadOnly == false)
+                        {%>
+            <span id="WipoCodeDiv">
+                <%= Html.Kendo().AutoCompleteFor(m => m.WipoCode)
+                            .Name("WipoName")
+                            .DataTextField("Text")
+                            .HtmlAttributes(new { style = "width: 16%;font-weight:bold;color: #336699;" })
+                            .Filter("contains")
+                            .BindTo(Model.WipoList)
+                            .Value(Model.WipoCode)
+                            .Events(e =>
+                            {
+                                e.Change("onWipoChange");
+                            })
+                %>
+            </span>
+            <% }
+                else
+                { %>
+            <span id="WipoCodeReadOnlyDiv" class="formBoldAltLabel">
+                <% if (Model.CanEditHeader && Model.WipoCode != null && Model.WipoCode != "")
+                    { %>
+                <%: Html.ActionLink(Model.WipoCode, "ViewJurisdiction", "CountryLaw", new { ID = Model.JurisdictionID}, new { @style="text-decoration: underline; color: #4a6986 !important; font-weight: bold !important;", target = "_blank"}) %>
+                <% }
+                    else
+                    { %>
+                <span class="formLabel"><%: Model.WipoCode %></span>
+                <% } %>
+            </span>
+            <% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.RegionLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.RegionTooltip})%>
+    		<div class="clear"></div>
+			<span id="spanRegion" class="Gray14"><%if (Model.RegionName != null){ %><%: Model.RegionName %><%}else{ %>&nbsp;<%} %></span>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.TypeLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.TypeTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false){%>
+				<%= Html.Kendo().DropDownListFor(m => m.PatentDesignTypeName)
+					.Name("PatentDesignTypeName")
+					.DataTextField("Text")
+                    .DataValueField("Value")
+					.HtmlAttributes(new { style = "width: 100%;" })
+					.Filter("contains")
+					.BindTo(Model.PatentDesignTypeList)
+					.Value(Model.PatentDesignTypeID.ToString())
+					.Events(e =>
+					{
+						e.Change("onPatentDesignTypeChange");
+					})
+				%>
+			<%}else{ %>
+				<span class="Gray14"><%if (Model.PatentDesignTypeName != null && Model.PatentDesignTypeName != ""){ %><%: Model.PatentDesignTypeName %><%}else{ %>&nbsp;<%} %></span>
+            <%} %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.CaseTypesLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.CaseTypesTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.EditorFor(m => m.CaseTypesEditableDropDown) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.CaseTypes != null && Model.CaseTypes != ""){ %><%: Model.CaseTypes %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.DisclosureFirstSaleLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.DisclosureFirstSaleTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.PatentDesignDisclosedDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.PatentDesignDisclosedDateText != null){ %><%: Model.PatentDesignDisclosedDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.ApplicationNumberLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.ApplicationNumberTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false)
+				{%>
+				<%: Html.TextBoxFor(m => m.PatentDesignApplicationNumberTextBox, new { @class = "k-input k-textbox k-input-solid k-input-md k-rounded-md", @style = "width:100%; font-size:12px" }) %>
+			<% } else if (Model.IsDesign) { %>
+				<%-- AppNum is not unique for designs, and there is a link at top of page for IPO/DesignView link --%>
+                <span class="Gray14"><%if (Model.PatentDesignApplicationNumberTextBox != null){ %><%: Model.PatentDesignApplicationNumberTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } else { %>
+                <span class="Gray14"><%if (Model.PatentDesignApplicationNumberTextBox != null){ %><a href="javascript:OpenApplicationNumberURL()" style="text-decoration: underline; color: #4a6986 !important; font-weight: bold !important;"><%: Model.PatentDesignApplicationNumberTextBox %></a><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.ApplicationPctNumberLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.ApplicationPctNumberTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.ApplicationPctNumberTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+                <span class="Gray14"><%if (Model.ApplicationPctNumberTextBox != null){ %><a href="javascript:OpenApplicationPCTNumberURL()" style="text-decoration: underline; color: #4a6986 !important; font-weight: bold !important;"><%: Model.ApplicationPctNumberTextBox %></a><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.EarliestPriorityDateLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.EarliestPriorityDateTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.EarliestPriorityDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.EarliestPriorityDateText != null){ %><%: Model.EarliestPriorityDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.FilingDateLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.FilingDateTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.PatentDesignFilingDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.PatentDesignFilingDateText != null){ %><%: Model.PatentDesignFilingDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.ChTwoDemandFiledLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.ChTwoDemandFiledTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.ChTwoDemandFiledDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.ChTwoDemandFiledDateText != null){ %><%: Model.ChTwoDemandFiledDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.PatentDesignPublicationNumberLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.PublicationNumberTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.PatentDesignPublicationNumberTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.PatentDesignPublicationNumberTextBox != null){ %><%: Model.PatentDesignPublicationNumberTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+			<!-- Should these 2 be only if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_USA) ? -->
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.WIPOPublicationNumberLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.WIPOPublicationNumberTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.WIPOPublicationNumberTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.WIPOPublicationNumberTextBox != null){ %><%: Model.WIPOPublicationNumberTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.WIPOPublicationDateLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.WIPOPublicationDateTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.WIPOPublicationDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.WIPOPublicationDateText != null){ %><%: Model.WIPOPublicationDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.PublishedLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.PublishedTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.PatentDesignPublishedDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.PatentDesignPublishedDateText != null){ %><%: Model.PatentDesignPublishedDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.PatentNumberLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.PatentNumberTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.PatentDesignRegistrationNumberTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+                <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_USA){ %>
+    				<span class="Gray14"><%if (Model.PatentDesignRegistrationNumberTextBox != null){ %><a href="http://patft.uspto.gov/netacgi/nph-Parser?patentnumber=<%: Model.PatentDesignRegistrationNumberTextBox %>" target="_blank" style="text-decoration: underline; color: #4a6986 !important; font-weight: bold !important;"><%: Model.PatentDesignRegistrationNumberTextBox %></a><%}else{ %>&nbsp;<%} %></span>
+                <%}else{ %>
+    				<span class="Gray14"><%if (Model.PatentDesignRegistrationNumberTextBox != null){ %><%: Model.PatentDesignRegistrationNumberTextBox %><%}else{ %>&nbsp;<%} %></span>
+                <% } %>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.GrantedLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.GrantedTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.PatentDesignGrantedDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.PatentDesignGrantedDateText != null){ %><%: Model.PatentDesignGrantedDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+            <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_USA){ %>
+    		    <div class="pad5"></div>
+			    <%: Html.LabelFor(m=>m.PTADaysLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.PTADaysTooltip})%>
+    		    <div class="clear"></div>
+			    <% if (ViewBag.ReadOnly == false) {%>
+				    <%: Html.TextBoxFor(m => m.PTADaysTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:130px; font-size:12px"}) %>
+			    <% } else { %>
+				    <span class="Gray14"><%if (Model.PTADaysTextBox != null){ %><%: Model.PTADaysTextBox %><%}else{ %>&nbsp;<%} %></span>
+			    <% } %>
+            <% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.PatentExpiresDateLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.PatentExpiresDateTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.PatentExpiresDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.PatentExpiresDateText != null){ %><%: Model.PatentExpiresDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+        </div>
+
+        <div class="grid_9 prefix_1">
+			<%: Html.LabelFor(m=>m.StatusLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.StatusTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.EditorFor(m => m.StatusEditableDropDown, new { @style = "lineHeight22" })%>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.StatusName != null){ %><%: Model.StatusName %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+            <%: Html.LabelFor(m=>m.SubstatusLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.SubstatusTooltip})%>
+    		<div class="clear"></div>
+            <% if (ViewBag.ReadOnly == false){%>
+                <span id="SubstatusDiv">
+                    <%: Html.EditorFor(m => m.SubstatusEditableDropDown, new { @style = "lineHeight22" })%>
+                </span>
+            <%} else { %>
+                <span class="Gray14"><%: Model.SubstatusName  %></span>
+            <% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.StatusDateLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.StatusDateTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.StatusDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.StatusDateText != null){ %><%: Model.StatusDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.FirstNamedInventorLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.FirstNamedInventorTooltip})%>
+    		<div class="clear"></div>
+            <% if (ViewBag.ReadOnly == false){%>
+                <%= Html.Kendo().AutoCompleteFor(m => m.FirstNamedInventorCompanyName)
+                    .Name("FirstNamedInventorCompanyName")
+                    .DataTextField("Text")
+                    .HtmlAttributes(new { style = "width: 100%", onBlur="CheckFirstNamedInventor()", onKeyUp="if (event.keyCode!=13) {SetValue();}else{event.preventDefault();}"})
+                    .Filter("startswith")
+                    .BindTo(Model.FirstNamedInventorCompanyList)
+                    .Value(Model.FirstNamedInventorCompanyName)
+                    .Events(e =>
+                    {
+                        e.Change("onFirstNamedInventorChange");
+                    })
+                %>
+            <% }else{ %>
+                <span class="Gray14">
+                    <%: Model.FirstNamedInventorCompanyName %>
+                    <% if (Model.FirstNamedInventorCompanyID != Guid.Empty && Model.FirstNamedInventorCompanyID != null){ %>
+                        <a href='<%: Url.Action("Company", "AddressBook", new { ID = Model.FirstNamedInventorCompanyID, IsDirect = TMCloud.Globals.DEFAULT_YES }) %>'>
+                            <img src='<%: Url.Content("~/Images/Icons/Companies.png") %>' height="16" />
+                        </a>
+                    <% } %>
+                </span>
+            <% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.ApplicantLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.ApplicantTooltip})%>
+    		<div class="clear"></div>
+            <% if (ViewBag.ReadOnly == false){%>
+                <%= Html.Kendo().AutoCompleteFor(m => m.ApplicantCompanyName)
+                    .Name("ApplicantCompanyName")
+                    .DataTextField("Text")
+                    .HtmlAttributes(new { style = "width: 100%", onBlur="CheckApplicant()", onKeyUp="if (event.keyCode!=13) {SetValue();}else{event.preventDefault();}"})
+                    .Filter("startswith")
+                    .BindTo(Model.ApplicantCompanyList)
+                    .Value(Model.ApplicantCompanyName)
+                    .Events(e =>
+                    {
+                        e.Change("onApplicantChange");
+                    })
+                %>
+            <% }else{ %>
+                <span class="Gray14">
+                    <%: Model.ApplicantCompanyName %>
+                    <% if (Model.ApplicantCompanyID != Guid.Empty && Model.ApplicantCompanyID != null){ %>
+                        <a href='<%: Url.Action("Company", "AddressBook", new { ID = Model.ApplicantCompanyID, IsDirect = TMCloud.Globals.DEFAULT_YES }) %>'>
+                            <img src='<%: Url.Content("~/Images/Icons/Companies.png") %>' height="16" />
+                        </a>
+                    <% } %>
+                </span>
+            <% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.OwnerLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.OwnerTooltip})%>
+    		<div class="clear"></div>
+            <% if (ViewBag.ReadOnly == false){%>
+                <%= Html.Kendo().AutoCompleteFor(m => m.OwnerCompanyName)
+                    .Name("OwnerCompanyName")
+                    .DataTextField("Text")
+                    .HtmlAttributes(new { style = "width: 100%", onBlur="CheckOwner()", onKeyUp="if (event.keyCode!=13) {SetValue();}else{event.preventDefault();}"})
+                    .Filter("startswith")
+                    .BindTo(Model.OwnerCompanyList)
+                    .Value(Model.OwnerCompanyName)
+                    .Events(e =>
+                    {
+                        e.Change("onOwnerChange");
+                    })
+                %>
+            <% }else{ %>
+                <span class="Gray14">
+                    <%: Model.OwnerCompanyName %>
+                    <% if (Model.OwnerCompanyID != Guid.Empty && Model.OwnerCompanyID != null){ %>
+                        <a href='<%: Url.Action("Company", "AddressBook", new { ID = Model.OwnerCompanyID, IsDirect = TMCloud.Globals.DEFAULT_YES }) %>'>
+                            <img src='<%: Url.Content("~/Images/Icons/Companies.png") %>' height="16" />
+                        </a>
+                    <% } %>
+                </span>
+            <% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.GroupsLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.GroupsLabel})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.EditorFor(m => m.GroupsEditableDropDown) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.GroupNames != null && Model.GroupNames != ""){ %><%: Model.GroupNames %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.FamilyIDLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.FamilyIDTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.FamilyIDTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+                    
+    				<span class="Gray14"><%if (Model.FamilyIDTextBox != null && Model.FamilyIDTextBox != ""){ %>
+                        <a href="javascript:PatentQuickSearchSubmit('<%: Model.FamilyIDTextBox %>')" style="text-decoration: underline; color: #4a6986 !important; font-weight: bold !important;" ><%: Model.FamilyIDTextBox %></a><%}else{ %>&nbsp;<%} %></span>
+                    
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.LanguageLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.LanguageTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.LanguageTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.LanguageTextBox != null){ %><%: Model.LanguageTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.PublicationKindLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.PublicationKindTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.PublicationKindTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.PublicationKindTextBox != null){ %><%: Model.PublicationKindTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.USPCLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.USPCTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.USPCTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.USPCTextBox != null){ %><%: Model.USPCTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.CPCLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.CPCTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.CPCTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.CPCTextBox != null && Model.CPCTextBox != ""){ %><%: Model.CPCTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.IPCLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.IPCTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.IPCTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.IPCTextBox != null && Model.IPCTextBox != ""){ %><%: Model.IPCTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.AiaLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.AiaTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.AiaTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.AiaTextBox != null){ %><%: Model.AiaTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.EntityStatusLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.EntityStatusTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextBoxFor(m => m.EntityStatusTextBox, new {@class="k-input k-textbox k-input-solid k-input-md k-rounded-md", @style="width:100%; font-size:12px"}) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.EntityStatusTextBox != null){ %><%: Model.EntityStatusTextBox %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+            <%: Html.LabelFor(m=>m.CostCenterLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.CostCenterTooltip})%>
+    		<div class="clear"></div>
+            <% if (ViewBag.ReadOnly == false){%>
+                <span id="CostCenterDiv">
+                    <%: Html.EditorFor(m => m.CostCenterEditableDropDown, new { @style = "lineHeight22" })%>
+                </span>
+            <%}else{ %>
+                <span class="Gray14"><%: Model.CostCenterName %>&nbsp;</span>
+            <% } %>
+
+    		<div class="pad5"></div>
+            <%: Html.LabelFor(m=>m.ResponsibleOfficeLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.ResponsibleOfficeTooltip})%>
+    		<div class="clear"></div>
+            <% if (ViewBag.ReadOnly == false){%>
+                <span id="ResponsibleOfficeDiv">
+                    <%: Html.EditorFor(m => m.ResponsibleOfficeEditableDropDown, new { @style = "lineHeight22" })%>
+                </span>
+            <%}else{ %>
+                <span class="Gray14"><%: Model.ResponsibleOfficeName  %></span>
+            <% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.CaseOpenedLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.CaseOpenedTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.CaseOpenedDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.CaseOpenedDateText != null){ %><%: Model.CaseOpenedDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.CaseClosedLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.CaseClosedTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%= Html.DatePickerFor(m => m.CaseClosedDate, htmlAttributes: new { style = "width: 130px;" }) %>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.CaseClosedDateText != null){ %><%: Model.CaseClosedDateText %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+
+    		<div class="pad5"></div>
+			<%: Html.LabelFor(m=>m.AnnuityPaymentProviderLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.AnnuityPaymentProviderTooltip})%>
+    		<div class="clear"></div>
+            <% if (ViewBag.ReadOnly == false){%>
+                <%= Html.Kendo().AutoCompleteFor(m => m.AnnuityPaymentProviderCompanyName)
+                    .Name("AnnuityPaymentProviderCompanyName")
+                    .DataTextField("Text")
+                    .HtmlAttributes(new { style = "width: 100%", onBlur="CheckAnnuityPaymentProvider()", onKeyUp="if (event.keyCode!=13) {SetValue();}else{event.preventDefault();}"})
+                    .Filter("startswith")
+                    .BindTo(Model.AnnuityPaymentProviderCompanyList)
+                    .Value(Model.AnnuityPaymentProviderCompanyName)
+                    .Events(e =>
+                    {
+                        e.Change("onAnnuityPaymentProviderChange");
+                    })
+                %>
+            <% }else{ %>
+                <span class="Gray14">
+                    <%: Model.AnnuityPaymentProviderCompanyName %>
+                    <% if (Model.AnnuityPaymentProviderCompanyID != Guid.Empty && Model.AnnuityPaymentProviderCompanyID != null){ %>
+                        <a href='<%: Url.Action("Company", "AddressBook", new { ID = Model.AnnuityPaymentProviderCompanyID, IsDirect = TMCloud.Globals.DEFAULT_YES }) %>'>
+                            <img src='<%: Url.Content("~/Images/Icons/Companies.png") %>' height="16" />
+                        </a>
+                    <% } %>
+                </span>
+            <% } %>
+
+
+        </div>
+
+        <div class="grid_8 omega textCenter">
+            <asp:Panel ID="ProfileImagePanel" style="height: auto; width:100%; text-align: center;" runat="server">
+                <div class="Shadow Rounded" style="background-color: white; width:100%; display: inline-block">
+                    <div class="insidePadding" style="background-color: LightGray; margin:10px 10px 10px 10px;">
+                        <span class="pad20"></span>
+                        <% if (Model.ImageFileName != null && Model.ImageFileName != "")
+                                         { %>
+                            <img id="CopyrightImage" width="80%" class="CssClass" src="<%= Url.Content(Model.ImageFilePath + "/" + Model.ImageFileName) %>" />
+                            <div class="pad5">
+                            </div>
+                            <span class="Gray14"><%: Model.ImageDescription %></span>
+                        <% }
+                        else
+                        { %>
+                            <img id="CopyrightImageMissing" width="80%" class="CssClass" src="<%= Url.Content("/Images/Icons/no_image.png") %>" />
+                        <% } %>
+                    </div>
+                </div>
+            </asp:Panel>
+        </div>
+
+    	<div class="pad5"></div>
+    	<div class="grid_26 prefix_1 alpha omega textLeft">
+		    <%: Html.LabelFor(m=>m.CaseDescriptionLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.CaseDescriptionTooltip})%>
+    	    <div class="clear"></div>
+		    <span class="Gray14"><%: Model.CaseDescription  %></span>
+        </div>
+		<div class="pad5"></div>
+    	<div class="grid_26 prefix_1 alpha omega textLeft">
+			<%: Html.LabelFor(m=>m.AbstractLabel, new{@class="formBoldAltLabel lineHeight22", @title=Resources.Modules.Patents.Details.AbstractTooltip})%>
+    		<div class="clear"></div>
+			<% if (ViewBag.ReadOnly == false) {%>
+				<%: Html.TextAreaFor(m => m.AbstractEditor, new {@class="formTextBox k-input k-textbox k-input-solid k-input-md k-rounded-md", @style = "width: 100%; height: 70px; line-height:20px; padding-left:5px" })%>
+			<% } else { %>
+				<span class="Gray14"><%if (Model.AbstractDisplay != null){ %><%: Model.AbstractDisplay %><%}else{ %>&nbsp;<%} %></span>
+			<% } %>
+        </div>
+
+
+		<div class="pad20"></div>
+		<%-- Parties --%>
+		<div class="grid_29 alpha omega textLeft">
+			<%: Html.Partial("_PartiesPartial", Model.Parties) %>
+		</div>
+
+		<% } %> <%-- end of Model.CanViewHeader --%>
+	<% } //end of form %>
+
+		<div class="clear"></div>
+		<div class="pad20"></div>
+		<div id="CollapsibleDiv" class="left5">
+			<input id="ExpandCollapseAllButton" type="button" class="GreyButton left5 bold" value="<%:Resources.Modules.AddressBook.CompanyDetails.ExpandCollapseAllButton %>" />
+            <% if (Model.CanEditHeader)
+                { %>
+            <div class="floatRight right5 no-print">
+                <table style="width: 100%">
+                    <tr>
+                        <td>
+<%--                            <%: Html.ActionLink(Resources.Modules.TrademarkClearances.Details.EditButton, "Edit", "Patents", new{ ID = Model.PatentID }, new {@class="editButton", id="EditBottomButton"}) %>--%>
+ 							<a href="<%: Model.EditLink %>" class="editButton" id="EditBottomButton"><%: Resources.Modules.TrademarkClearances.Details.EditButton %></a>
+                           <input id="SaveBottomButton" type="button" value="<%: Resources.Modules.TrademarkClearances.Details.SaveButton %>" class="BlueButton" />
+                        </td>
+                    </tr>
+                </table>
+            </div>
+            <% } %>
+			<% using (Html.BeginForm("SaveSectionOrder", "Patents", FormMethod.Post, new { id = "SaveLayoutForm" })){ %>
+				<%-- AntiForgeryToken will be added by JS --%>
+				<%: Html.HiddenFor(m => m.PatentID) %>
+				<%: Html.HiddenFor(m => m.Collapsed) %>
+				<%: Html.HiddenFor(m => m.LayoutOrder) %>
+			<% } %>
+			<div class="pad5"></div>
+			<div class="column">
+                <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_EPO)
+                    { %>
+                <%-- Designated States --%>
+                <% if (Model.CanViewHeader)
+                    { %>
+                <div id="DesignatedStatesDisplay">
+                    <div class="dragbox">
+                        <h2 id="DesignatedStatesHeaderLabel">
+                            <%: Html.LabelFor(m=>m.DesignatedStatesLabel, new{@class="left20 CursorPointer"})%>
+                        </h2>
+                        <div id="DesignatedStatesDiv" class="dragbox-content" style="display: none;">
+                            <%: Html.Partial("_DesignatedStatesPartial", Model.DesignatedStates) %>
+                        </div>
+                    </div>
+                    <div class="clear"></div>
+                </div>
+                <% } %>
+                <%-- Extension States --%>
+                <% if (Model.CanViewHeader)
+                    { %>
+                <div id="ExtensionStatesDisplay">
+                    <div class="dragbox">
+                        <h2 id="ExtensionStatesHeaderLabel">
+                            <%: Html.LabelFor(m=>m.ExtensionStatesLabel, new{@class="left20 CursorPointer"})%>
+                        </h2>
+                        <div id="ExtensionStatesDiv" class="dragbox-content" style="display: none;">
+                            <%: Html.Partial("_ExtensionStatesPartial", Model.ExtensionStates) %>
+                        </div>
+                    </div>
+                    <div class="clear"></div>
+                </div>
+                <% } %>
+                <% } %>
+                <%-- Images --%>
+				<% if (Model.CanViewImages){ %>
+                    <div id="ImagesDisplay">
+                        <div class="dragbox">
+                            <h2 id="ImagesHeaderLabel">
+                                <%: Html.LabelFor(m=>m.ImagesLabel, new{@class="left20 CursorPointer"})%>
+                            </h2>
+                            <div id="ImagesDiv" class="dragbox-content" style="display: none;">
+                                <%: Html.Partial("_ImagesPartial", Model.Images) %>
+                            </div>
+                        </div>
+                        <div class="clear"></div>
+                    </div>
+				<% } %>
+				<%-- Managers --%>
+				<% if (Model.CanViewCaseManagers){ %>
+					<div id="ManagersDisplay">
+						<div class="dragbox">
+							<h2 id="ManagersHeaderLabel">
+								<%: Html.LabelFor(m=>m.ManagersLabel, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="ManagersDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_ManagersPartial", Model.Managers) %>
+							</div>
+						</div>
+						<div class="clear"></div>
+					</div>
+				<% } %>
+				<%-- Clients --%>
+				<% if (Model.CanViewClients){ %>
+					<div id="ClientsDisplay">
+						<div class="dragbox">
+							<h2 id="ClientsHeaderLabel">
+								<%: Html.LabelFor(m=>m.ClientLabel, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="ClientsDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_ClientsPartial", Model.Client) %>
+							</div>
+						</div>
+						<div class="clear"></div>
+					</div>
+				<% } %>
+				<%-- Agents --%>
+				<% if (Model.CanViewAgents){ %>
+					<div id="AgentsDisplay">
+						<div class="dragbox">
+							<h2 id="AgentsHeaderLabel">
+								<%: Html.LabelFor(m=>m.AgentsLabel, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="AgentsDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_AgentsPartial", Model.Agents) %>
+							</div>
+						</div>
+						<div class="clear">
+						</div>
+					</div>
+				<% } %>
+				<%-- Docket --%>
+				<% if (Model.CanViewDocket){ %>
+					<div id="DocketDisplay">
+						<div class="dragbox">
+							<h2 id="DocketHeaderLabel">
+								<%: Html.LabelFor(m=>m.DocketLabel, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="DocketDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_DocketPartial", Model.Docket) %>
+							</div>
+						</div>
+						<div class="clear">
+						</div>
+					</div>
+				<% } %>
+				<%-- Docket History --%>
+				<% if (Model.CanViewDocketHistory){ %>
+					<div id="DocketHistoryDisplay">
+						<div class="dragbox">
+							<h2 id="DocketHistoryHeaderLabel">
+								<%: Html.LabelFor(m=>m.DocketHistoryLabel, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="DocketHistoryDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_DocketHistoryPartial", Model.DocketHistory) %>
+							</div>
+						</div>
+						<div class="clear">
+						</div>
+					</div>
+				<% } %>
+				<%-- Journal --%>
+				<% if (Model.CanViewJournal){ %>
+					<div id="JournalDisplay">
+						<div class="dragbox">
+							<h2 id="JournalHeaderLabel">
+								<%: Html.LabelFor(m=>m.Journal, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="JournalDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_JournalPartial", Model.Journal) %>
+							</div>
+						</div>
+						<div class="clear">
+						</div>
+					</div>
+				<% } %>
+				<%-- Documents --%>
+				<% if (Model.CanViewDocumentsEmails){ %>
+					<div id="DocumentsDisplay">
+						<div class="dragbox">
+							<h2 id="DocumentsHeaderLabel">
+								<%: Html.LabelFor(m=>m.DocumentsAndEmailsLabel, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="DocumentsDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_DocumentsPartial", Model.Documents) %>
+							</div>
+						</div>
+						<div class="clear">
+						</div>
+					</div>
+				<% } %>
+				<%-- Notes --%>
+				<% if (Model.CanViewNotes){ %>
+					<div id="NotesDisplay">
+						<div class="dragbox">
+							<h2 id="NotesHeaderLabel">
+								<%: Html.LabelFor(m=>m.NotesLabel, new{@class="left20 CursorPointer"})%>
+							</h2>
+							<div id="NotesDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_NotesPartial", Model.Notes) %>
+							</div>
+						</div>
+					</div>
+				<% } %>
+				<%-- Priorities --%>
+				<% if (Model.CanViewPriorities){ %>
+				    <div id="PrioritiesDisplay">
+					    <div class="dragbox">
+						    <h2 id="PrioritiesHeaderLabel">
+							    <%: Html.LabelFor(m=>m.PrioritiesLabel, new{@class="left20 CursorPointer"})%>
+						    </h2>
+						    <div id="PrioritiesDiv" class="dragbox-content" style="display: none;">
+							    <%: Html.Partial("_PrioritiesPartial", Model.Priorities) %>
+						    </div>
+					    </div>
+				    </div>
+				<% } %>
+                <%-- Office Actions --%>
+                <% if (Model.CanViewOfficeActions){ %>
+                <div id="OfficeActionsDisplay">
+                    <div class="dragbox">
+                        <h2 id="OfficeActionsHeaderLabel">
+                            <%: Html.LabelFor(m=>m.OfficeActionsLabel, new{@class="left20 CursorPointer"})%>
+                        </h2>
+                        <div id="OfficeActionsDiv" class="dragbox-content" style="display: none;">
+                            <%: Html.Partial("_OfficeActionsPartial", Model.OfficeActions) %>
+                        </div>
+                    </div>
+                    <div class="clear"></div>
+                </div>
+                <% } %>
+				<%-- National Applications --%>
+                <% //if (Model.CanViewNationalApplication && (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_PCT || Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_EPO)){ %>
+                <% if (Model.CanViewNationalApplication && Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_PCT){ %>
+					<div id="NationalApplicationDisplay">
+						<div class="dragbox">
+							<h2 id="NationalApplicationHeaderLabel">
+                                <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_PCT) { %>
+    								<%: Html.LabelFor(m=>m.PctNationalPhaseApplicationsLabel, new{@class="left20 CursorPointer"})%>
+                                <% } %>
+                                <% else if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_EPO) { %>
+    								<%: Html.LabelFor(m=>m.EpoNationalApplicationsLabel, new{@class="left20 CursorPointer"})%>
+                                <% } %>
+							</h2>
+							<div id="NationalApplicationDiv" class="dragbox-content" style="display: none;">
+								<%: Html.Partial("_NationalApplicationsPartial", Model.NationalApplication) %>
+							</div>
+						</div>
+						<div class="clear">
+						</div>
+					</div>
+				<% } %>
+                <%-- Office Actions --%>
+                <% if (Model.CanViewExaminationDetails){ %>
+                <div id="ExaminationDetailsDisplay">
+                    <div class="dragbox">
+                        <h2 id="ExaminationDetailsHeaderLabel">
+                            <%: Html.LabelFor(m=>m.ExaminationDetailsLabel, new{@class="left20 CursorPointer"})%>
+                        </h2>
+                        <div id="ExaminationDetailsDiv" class="dragbox-content" style="display: none;">
+                            <%: Html.Partial("_ExaminationDetailsPartial", Model.ExaminationDetails) %>
+                        </div>
+                    </div>
+                    <div class="clear"></div>
+                </div>
+                <% } %>
+                <%-- Designated patents Actions --%>
+                <% if (Model.CanViewHeader && Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_HONGKONG){ %>
+                <div id="DesignatedPatentDisplay">
+                    <div class="dragbox">
+                        <h2 id="DesignatedPatentHeaderLabel">
+                            <%: Html.LabelFor(m=>m.DesignatedPatentLabel, new{@class="left20 CursorPointer"})%>
+                        </h2>
+                        <div id="DesignatedPatentDiv" class="dragbox-content" style="display: none;">
+                            <%: Html.Partial("_DesignatedPatentsPartial", Model.DesignatedPatent) %>
+                        </div>
+                    </div>
+                    <div class="clear"></div>
+                </div>
+                <% } %>
+                <% if (Model.JurisdictionName == TMCloud.Globals.COUNTRY_LAW_EPO){ %>
+                <%-- Patent Family --%>
+                    <% if (Model.CanViewHeader){ %>
+                        <div id="PatentFamilyDisplay">
+                            <div class="dragbox">
+                                <h2 id="PatentFamilyHeaderLabel">
+                                    <%: Html.LabelFor(m=>m.PatentFamilyLabel, new{@class="left20 CursorPointer"})%>
+                                </h2>
+                                <div id="PatentFamilyDiv" class="dragbox-content" style="display: none;">
+                                    <%: Html.Partial("_PatentFamilyPartial", Model.PatentFamily) %>
+                                </div>
+                            </div>
+                            <div class="clear"></div>
+                        </div>
+                    <% } %>
+                <% } %>
+                <%-- Related Records --%>
+                <% if (Model.CanViewRelatedRecords)
+                    { %>
+                <div id="RelatedRecordsDisplay">
+                    <div class="dragbox">
+                        <h2 id="RelatedRecordsHeaderLabel">
+                            <%: Html.LabelFor(m=>m.LinkedRecordsLabel, new{@class="left20 CursorPointer"})%>
+                        </h2>
+                        <div id="RelatedRecordsDiv" class="dragbox-content" style="display: none;">
+                            <%: Html.Partial("_LinkedRecordsPartial", Model.LinkedRecords) %>
+                        </div>
+                    </div>
+                    <div class="clear"></div>
+                </div>
+                <% } %>
+			</div>
+		</div>
+		<div class="pad5"></div>
+		<div class="textCenter">
+			<span id="FooterInfoDiv" style="display: none;">
+				<%: Model.FooterCaseDescription %> <%: Html.LabelFor(m=>m.CreatedByLabel, new{@class="left5"})%> <%: Model.CreatedBy %> <%: Html.LabelFor(m=>m.OnLabel, new{})%> <%: Model.CreatedOn %>
+			| </span>
+			<a style="color: blue;" href="mailto:<%: TMCloud.Globals.EMAIL_HELP %>?subject=<%: TMCloud.Globals.EMAIL_HELP_SUBJECT %>"><%: TMCloud.Globals.NEED_HELP %></a>
+            <div class="pad5"></div>
+            <%:Resources.Modules.Trademarks.TrademarkDetails.LastUpdatedByLabel %> <%: Model.UpdatedBy %> <%:Resources.Modules.Trademarks.TrademarkDetails.OnLabel %> <%: Model.UpdatedOn %>
+            <div class="pad5"></div>
+            <%: Html.LabelFor(m=>m.RecordCheckedByLabel, new { @class = "formLabel lineHeight22", @title = Resources.Modules.Trademarks.TrademarkDetails.RecordCheckedByTooltip})%>
+            <% if (ViewBag.ReadOnly == false)
+                {%>
+            <%= Html.Kendo().DropDownList()
+                    .Name("RecordCheckedBy")
+                    .DataTextField("Text")
+                    .DataValueField("Value")
+	                .BindTo(Model.RecordCheckedByList)
+                    .Value(Model.RecordCheckedByID.ToString())
+                    .HtmlAttributes(new { style = "width: 150px" })
+	                .Events(e =>
+	                {
+                        e.Change("OnChangeRecordCheckedBy");
+                    })
+            %>
+            <%}
+                else
+                { %>
+            <span class="Gray14"><%: Model.RecordCheckedByName  %></span>
+            <% } %>
+            <%: Html.LabelFor(m => m.DateCheckedLabel, new{@class="formLabel lineHeight22", @title=Resources.Modules.Trademarks.TrademarkDetails.DateCheckedTooltip})%>
+            <%	if (ViewBag.ReadOnly == false)
+                { %>
+            <%= Html.Kendo().DatePicker()
+						.Name("RecordCheckedDate")
+						.Format("dd MMM yyyy")
+						.HtmlAttributes(new { style = "width:120px" })
+						.Value(Model.DateChecked)
+						.Events(e =>
+						{
+							e.Change("OnChangeRecordCheckedDate");
+						})
+            %>
+            <%	}
+                else
+                { %>
+            <span class="Gray14"><%: Model.DateCheckedTextBox  %></span>
+            <% } %>
+        </div>
+        <div class="clear"></div>
+		<div class="clear">
+		</div>
+
+	</div>
+	<div class="pad5"></div>
+	<% if (Model.CanDelete) { %>
+	<div class="grid_29 no-print">
+		<div class="floatRight left15" style="padding-right:10px;">
+			<div class="GreyButton" onclick="javascript:onDeleteRecord()">
+				<div class="floatLeft">
+					<img src="<%: Url.Content("~/Images/Icons/trash.png") %>" style="width:16px; height:16px" title="<%: Resources.Modules.Trademarks.SearchResults.MoveToTrashButton %>" alt="<%: Resources.Modules.Trademarks.SearchResults.MoveToTrashButton %>" />&nbsp;
+				</div>
+				<div class="floatRight">
+					<div class="pad2">
+					</div>
+					<%: Resources.Modules.Trademarks.SearchResults.MoveToTrashButton %>
+				</div>
+				<div class="clear">
+				</div>
+			</div>
+		</div>
+		<% if(Model.Archived){ %>
+			<div class="floatLeft">
+				<div class="GreyButton" onclick="javascript:onReactivateRecord()">
+					<div class="floatLeft">
+						<img src="<%: Url.Content("~/Images/blank.png") %>" style="width: 0px; height: 16px" title="<%: Resources.Modules.TrademarkClearances.Details.Reactivate %>" alt="<%: Resources.Modules.TrademarkClearances.Details.Reactivate %>" />&nbsp;
+					</div>
+					<div class="floatRight">
+						<div class="pad2"></div>
+						<%: Resources.Modules.TrademarkClearances.Details.Reactivate %>
+					</div>
+					<div class="clear"></div>
+				</div>
+			</div>
+		<% }else { %>
+			<div class="floatLeft">
+				<div class="GreyButton" onclick="javascript:onArchiveRecord()">
+					<div class="floatLeft">
+						<img src="<%: Url.Content("~/Images/Icons/archive.png") %>" style="width:16px; height:16px" title="<%: Resources.Modules.TrademarkClearances.Details.Archive %>" alt="<%: Resources.Modules.TrademarkClearances.Details.Archive %>" />&nbsp;
+					</div>
+					<div class="floatRight">
+						<div class="pad2">
+						</div>
+						<%: Resources.Modules.TrademarkClearances.Details.Archive %>
+					</div>
+					<div class="clear">
+					</div>
+				</div>
+			</div>
+		<% } %>
+	</div>
+	<% } %>
+	<% Html.RenderPartial("~/Views/Templates/_TemplatesPopupPartial.ascx", Model.Details); %>
+    <% Html.RenderPartial("~/Views/Templates/_DocumentTemplatesPopupPartial.ascx", Model.Details); %>
+    <script type="text/javascript">
+        $(document).ready(function () {
+            <% if (ViewBag.ReadOnly == false){%>
+                var dropdownListStatus = $("#StatusEditableDropDown_SelectedValue").data("kendoDropDownList");
+                dropdownListStatus.bind("change", onChangeStatus);
+            <% } %>
+        });
+        function onChangeStatus(e) {
+            // find selected name/ID
+            var dropDown = $('#StatusEditableDropDown_SelectedValue').data('kendoDropDownList');
+            $('#StatusID').val($('#StatusEditableDropDown_SelectedValue').val());
+            //if status is changed to "Granted" then calculate dockets
+            if (dropDown.text() == "<%: TMCloud.Globals.ADDITIONAL_IP_STATUS_GRANTED %>") {
+                CalculateAllDates();
+            }
+        }
+        <% if (Model.FooterCaseDescription != null && Model.FooterCaseDescription != ""){ %>
+            document.getElementById("FooterInfoDiv").style.display = 'inline';
+        <%}else{%>
+            document.getElementById("FooterInfoDiv").style.display = 'none';
+        <%}%>
+
+    </script>
+</asp:Content>
+
